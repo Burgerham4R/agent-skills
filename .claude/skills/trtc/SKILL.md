@@ -24,15 +24,24 @@ Always respond in the same language as the user's message. If uncertain, default
 
 ## Onboarding Detection
 
-**Before routing to any sub-skill, check if the user needs onboarding.** Route to `onboarding/SKILL.md` when ANY of these are true:
+**IMPORTANT: Most first-time interactions should go through onboarding.** The onboarding flow ensures proper setup (credentials, platform detection, project scanning) before any code is written or shown.
+
+Route to `onboarding/SKILL.md` when ANY of these are true:
 
 - User explicitly says "get started", "I'm new", "help me integrate", "how to use this", "first time"
 - User describes a from-scratch integration need ("I want to build a live streaming app")
 - User wants to run a demo ("try the demo", "see it working")
+- **User wants to add/integrate/implement a feature** ("I want to add gift function", "help me implement barrage", "add live streaming to my app") — this MUST go through onboarding Path A2, do NOT directly dump slice content
 
-**Priority rule:** If the user describes a specific technical problem (error code, symptom, code snippet), do NOT route to onboarding even if the project has no TRTC dependencies. A user asking "my createLive returns -2105" is troubleshooting, not onboarding — route to search/apply instead. Only use "no TRTC dependencies detected" as an onboarding signal when combined with a vague or introductory message.
+**When to skip onboarding and route directly to sub-skills:**
+- User asks a conceptual/learning question ("how does gift system work?", "what is co-guest?") → search skill
+- User pastes code and wants review → apply skill
+- User reports a specific error with code context ("my createLive returns -2105") → search + apply
+- User asks for specific API details ("what are the parameters for applyForSeat?") → search skill
 
-If onboarding is detected, follow `onboarding/SKILL.md` — do NOT proceed with the normal routing below.
+**The key distinction:** "I want to ADD/BUILD/IMPLEMENT X" → onboarding Path A2. "I want to UNDERSTAND/LEARN about X" → search skill.
+
+If onboarding is detected, read and follow `onboarding/SKILL.md` — do NOT proceed with the normal routing below. **Never dump raw slice content directly to the user. Always go through the onboarding flow first.**
 
 Your knowledge comes from a structured local knowledge base. The knowledge base uses two content types:
 

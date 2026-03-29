@@ -29,65 +29,78 @@ Before asking anything, silently detect what you can:
 
 If you can't scan files (tool limitation), you'll ask in Step 2.
 
-## Step 2: Triage — Two Questions
+## Step 2: Triage
 
-Ask these one at a time.
+**Smart inference first, ask only what's missing.**
 
-**Interaction method:** If your runtime supports structured selection UI (e.g., Claude Code's `AskUserQuestion` tool where users navigate with arrow keys), USE IT — this gives the best UX. If not available, fall back to a numbered list. Always include a free-text "Other" option as the last choice.
+From the user's message + auto-detection in Step 1, try to infer:
+- **Product** — which TRTC product? (Live / Call / Chat / Room)
+- **Platform** — which platform? (iOS / Android / Web / Flutter)
+- **Intent** — what do they want? (demo / integrate feature / troubleshoot / expand)
+- **Specific feature** — if they named one (e.g., "gift", "barrage", "live streaming")
 
-**Smart skip:** If the user's first message already contains product and/or intent information (e.g., "I want to try TRTC live streaming" contains both product=Live and intent=demo), skip the corresponding question. Don't ask what the user already told you.
+### If you can infer all of the above:
 
-### Q1: Product
+Do NOT ask Q1/Q2. Instead, present a **confirmation** before proceeding:
+
+```
+Here's what I understand:
+- Product: Live
+- Platform: iOS (detected from your Podfile)
+- Goal: Add gift function
+
+Is this correct?
+1. Yes, let's go
+2. Let me clarify
+```
+
+Use structured selection UI (e.g., `AskUserQuestion`) if available. If the user confirms, jump directly to the matching path. If they want to clarify, ask the specific question that needs correction.
+
+### If some information is missing:
+
+Only ask for what you don't know. Use structured selection UI if available, fall back to numbered list. Always include a free-text "Other" as the last choice.
+
+**Q1: Product** (skip if already known)
 
 Question: "What are you building?"
 
-Options (in order):
+Options:
 1. Live streaming
 2. Video / voice call
 3. Chat / messaging
 4. Multi-person room
+Last: "Something else — describe your use case"
 
-Last option (free text): "Something else — describe your use case"
-
-If the user selects a numbered option, map directly. If they type free text, map to the closest product. If ambiguous, confirm: "That sounds like Live streaming — is that right?"
-
-### Q2: Stage
+**Q2: Stage** (skip if already known)
 
 Question: "Where are you at?"
 
-Options (in order):
+Options:
 1. I want to try a demo first
 2. I want to build a specific feature
 3. I'm stuck on an issue
 4. I want to add a feature to my existing integration
+Last: "Something else — describe your situation"
 
-Last option (free text): "Something else — describe your situation"
-
-Route based on answer:
-
-| Answer | Path |
-|--------|------|
-| 1 — Try a demo | **Path A1: Demo Quickstart** |
-| 2 — Build a specific feature | **Path A2: Direct Integration** |
-| 3 — Stuck on an issue | **Path B: Troubleshooting** |
-| 4 — Add a feature to existing | **Path C: Feature Expansion** |
-| Free text | Map to closest path, confirm if ambiguous |
-
-If the user's free text doesn't clearly match, ask a follow-up to clarify.
-
-### Platform (if not auto-detected)
-
-If platform was not auto-detected in Step 1, ask:
+**Platform** (skip if auto-detected or mentioned)
 
 Question: "What platform are you developing for?"
 
-Options (in order):
+Options:
 1. iOS
 2. Android
 3. Web
 4. Flutter
+Last: "Other — describe your platform"
 
-Last option (free text): "Other — describe your platform"
+### Route to path:
+
+| Intent | Path |
+|--------|------|
+| Try a demo | **Path A1: Demo Quickstart** |
+| Build / integrate a specific feature | **Path A2: Direct Integration** |
+| Stuck on an issue | **Path B: Troubleshooting** |
+| Add feature to existing integration | **Path C: Feature Expansion** |
 
 ---
 
