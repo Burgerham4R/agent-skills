@@ -15,15 +15,15 @@
 
 ## Host
 
-- [Pre-broadcast Preview](https://trtc.io/document/74594.md#anchor-preview)
-- [Room Configuration](https://trtc.io/document/74594.md#room-config)
-- [Start & End Broadcast](https://trtc.io/document/74594.md#lifecycle)
+- [Pre-broadcast Preview](https://trtc.io/document/74594.md)
+- [Room Configuration](https://trtc.io/document/74594.md)
+- [Start & End Broadcast](https://trtc.io/document/74594.md)
 
 ## Audience
 
 - [Live Room List](https://trtc.io/document/74610.md)
-- [Watch & Leave](https://trtc.io/document/74594.md#audience-watch)
-- [Audience List](https://trtc.io/document/74596.md#audience-list)
+- [Watch & Leave](https://trtc.io/document/74594.md)
+- [Audience List](https://trtc.io/document/74596.md)
 
 ## Interaction
 
