@@ -13,8 +13,8 @@ ai-integration/
 │   ├── search/SKILL.md                # 搜索 slice（原子能力）和 scenario（集成场景）
 │   ├── apply/SKILL.md                 # 应用/校验代码
 │   └── topic/SKILL.md                 # 场景引导
-├── llms.txt                           # LLM 文档发现入口（产品索引）
-├── llms/                              # LLM 渐进式文档（面向外部 LLM 的轻量索引）
+├── llms.txt                           # llms.txt 内容规范 + 初始模板（顶层产品索引）
+├── llms/                              # llms.txt 子文件模板（最终由文档站构建流程自动生成）
 │   ├── {product}.txt                  # 产品概述 + 平台链接（如 live.txt, chat.txt）
 │   └── {product}-{platform}.txt       # 平台概述 + 官方文档链接（如 live-ios.txt）
 ├── knowledge-base/
@@ -44,6 +44,17 @@ Slice 分为两层：
 
 ### Scenario（场景组合）
 一个 scenario 是完整的使用场景，引用多个 slice 并定义执行顺序。
+
+### llms.txt（LLM 文档发现）
+遵循 [llms.txt 标准](https://llmstxt.org/) 的渐进式文档披露系统，供外部 LLM（ChatGPT、Claude 等）发现和加载 TRTC 文档。
+
+**三级结构**：`llms.txt`（产品索引）→ `{product}.txt`（产品概述 + 平台链接）→ `{product}-{platform}.txt`（平台概述 + 官方文档链接）
+
+**定位**：仓库中的文件是**内容规范和初始模板**，最终由 trtc.io 文档站构建流程自动生成并部署到 CDN。文档站团队根据此模板编写生成脚本，从文档源（MDX/Markdown）自动产出 llms.txt 系列文件，确保文档更新时自动同步。
+
+**与 knowledge-base 的关系**：
+- `knowledge-base/`（slices + scenarios）= 面向内部 AI Skills 的结构化知识库，包含详细的代码示例、排障指南
+- `llms/` = 面向外部 LLM 的轻量索引，仅包含概述和指向 trtc.io 官方文档的链接
 
 ### 三层架构
 ```
