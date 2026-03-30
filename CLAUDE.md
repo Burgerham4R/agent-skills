@@ -18,7 +18,7 @@ ai-integration/
 │   ├── {product}.txt                  # 产品概述 + 平台链接（如 live.txt, chat.txt）
 │   └── {product}-{platform}.txt       # 平台概述 + 官方文档链接（如 live-ios.txt）
 ├── knowledge-base/
-│   ├── index.yaml                     # 全量索引（v3.0 — 含 source/priority/domain 字段）
+│   ├── index.yaml                     # 全量索引（v4.0 — products/slices/scenarios/cross_product_relations）
 │   ├── slice-spec.md                  # Slice 定义规范（拆分标准、编写规范、规划方法论）
 │   ├── slices/                        # 原子能力片段
 │   │   ├── {product}/                 # 按产品分类 (chat/call/rtc-engine/live/room)

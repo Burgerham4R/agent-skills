@@ -26,11 +26,12 @@ You search the TRTC knowledge base to find relevant atomic capabilities (slices)
 ### Step 1: Read the index
 
 Read `knowledge-base/index.yaml` to get the full catalog. Key sections:
-- **products**: Product list with `docs_base_url`, `error_code_doc`, and `docs` (feature-specific URLs)
-- **domains**: Capability domains organized by product
+- **products**: Product list with `id`, `name`, `description`, `llms_file` (path to llms txt for docs/demo links)
 - **cross_product_relations**: Cross-product dependency mappings
-- **slices**: Each slice has `id`, `name`, `tags`, `platforms`, `file`, `platform_files`, `related`, `description`, `error_codes` (optional), `status`
+- **slices**: Each slice has `id`, `name`, `tags`, `platforms`, `file`, `description`, `status`
 - **scenarios**: Each scenario has `id`, `name`, `slices`, `file`, `description`
+
+**Doc URL resolution:** When you need official doc links (for fallback or citation), read the product's `llms_file` (e.g., `llms/live.txt` or `llms/live-ios.txt`). These contain all doc URLs organized by feature.
 
 ### Step 2: Seven-Strategy Matching (by priority)
 
@@ -70,7 +71,7 @@ Match against scenarios' `name`, `description`, and `slices` fields:
 When no exact matches found:
 - Apply Chinese-English keyword mapping (see table below)
 - Follow `related` links from the best partial match (one-hop expansion)
-- Match against domain descriptions
+- Match against slice tags and descriptions
 
 ### Step 3: Platform Filtering
 
@@ -104,12 +105,12 @@ Find the closest partial match from Step 2 and follow its `related` links.
 Load those related slices as "possibly relevant" results.
 
 #### F2. Product Documentation Fallback
-Use `WebFetch` to retrieve content from the product's official documentation:
-- Check `products[product].docs` for feature-specific URLs first
-- Fall back to `products[product].docs_base_url` for the product landing page
-- Mark the source clearly: "📄 来源：官方文档 (trtc.io)"
+Read the product's llms file (`llms/{product}.txt` or `llms/{product}-{platform}.txt`) to find relevant doc URLs:
+- Check for feature-specific links first
+- Fall back to the product overview page
+- Mark the source clearly: "Source: Official docs (trtc.io)"
 
-> **Extension point for llms.txt**: Currently, fallback URLs come from `index.yaml products[].docs` and `docs_base_url`. In the future, a per-product `llms.txt` file will provide a complete URL index. When that's available, search for URLs in llms.txt first, then fall back to index.yaml. The URL resolution logic should be treated as a pluggable step.
+> **llms.txt integration**: Doc URLs come from llms files, not from index.yaml. Each product+platform combination has its own llms file with categorized doc links.
 
 #### F3. Cross-Product Suggestion
 If the query relates to a product feature that depends on another product:
@@ -120,7 +121,7 @@ If the query relates to a product feature that depends on another product:
 If nothing in the KB matches at all:
 - Provide an answer based on general TRTC knowledge
 - Mark clearly: "⚠️ 通用知识，请对照官方文档验证"
-- Always include the relevant `error_code_doc` or `docs_base_url` link
+- Always include a link to the relevant doc from the product's llms file
 - Say: "知识库暂未收录此内容（KB slice 暂无），以下为通用知识供参考"
 
 ### Step 6: Return Results
@@ -136,6 +137,14 @@ Structure the response with:
   - 🟡 中 — keyword/cross-product match (S4/S5/S6)
   - 🔴 低 — fuzzy match or fallback (S7/F1-F4)
 - **Related slices** for further exploration
+
+### Code example rules
+
+When including code examples in search results:
+1. **Always use code from the platform-specific slice file** — never from the product-level overview (which may have pseudo-code or simplified examples)
+2. **Copy code blocks from the slice** — adapt for context but preserve exact import statements, API signatures, and type annotations. Do NOT substitute SDK names or parameter types from memory.
+3. **If no platform-specific file exists** for the requested platform, state it explicitly: "该平台代码示例暂未收录" — do NOT synthesize code from general knowledge
+4. **Check the slice's gotcha/注意事项 section** for platform-specific type requirements, naming conventions, and common pitfalls before presenting code
 
 ## Chinese-English Keyword Mapping
 
@@ -183,7 +192,7 @@ Use this mapping to expand search queries bidirectionally:
 ### Missing Content
 | Scenario | Handling |
 |----------|---------|
-| User asks about a product with no slices (e.g., Call, Room) | Return product description from index → WebFetch docs_base_url → mark "暂无 KB slice" |
+| User asks about a product with no slices (e.g., Call, Room) | Return product description from index → read llms file for doc links → mark "No KB slice yet" |
 | Slice with `status: planned` | Return index description → say "详细内容即将上线" → provide trtc.io link |
 | Platform requested but no platform_files entry | Return product-level overview → say "该平台代码示例暂未收录" |
 
@@ -197,10 +206,10 @@ Use this mapping to expand search queries bidirectionally:
 ### Search Ambiguity
 | Scenario | Handling |
 |----------|---------|
-| Vague query like "消息" | Return top 3-5 message-domain slices → let user narrow down |
+| Vague query like "消息" | Return top 3-5 message-related slices → let user narrow down |
 | Mixed Chinese-English "怎么 kick offline" | Apply keyword mapping → match to relevant slice |
 | Only an error code "6208" | S1 exact match → return slice + troubleshooting guide |
-| Error code not in any slice | Return "KB 未收录此错误码" → point to product's error_code_doc URL |
+| Error code not in any slice | Return "Error code not in KB" → read llms file for error code doc link |
 
 ### Platform Edge Cases
 | Scenario | Handling |

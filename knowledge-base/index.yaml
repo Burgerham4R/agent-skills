@@ -1,129 +1,45 @@
 # TRTC Knowledge Base Index
-# 全量索引 — 所有 slice 和 scenario 的集中目录
+# Slice 和 scenario 的集中目录
 # Skills 通过读取此文件发现和定位知识库内容
 
-version: "3.0"
-last_updated: "2026-03-29"
+version: "4.0"
+last_updated: "2026-03-30"
 
 # ============================================================
 # Products — TRTC 产品线
 # ============================================================
+# 仅保留 search skill 做产品识别和 fallback 所需的最小信息
+# 详细文档链接已迁移至 llms/{product}.txt 和 llms/{product}-{platform}.txt
 products:
   - id: chat
     name: Chat（即时通信）
     description: 即时通信 SDK，提供消息收发、会话管理、群组、用户资料等能力
-    platforms: [web, android, ios, flutter, electron]
-    docs_base_url: https://trtc.io/zh/document/34309
-    error_code_doc: https://trtc.io/zh/document/34539
+    llms_file: llms/chat.txt
 
   - id: call
     name: Call（音视频通话）
     description: 音视频通话组件，支持 1v1 和群组音视频通话
-    platforms: [web, android, ios, flutter]
-    docs_base_url: https://trtc.io/zh/document/57574
-    error_code_doc: https://trtc.io/zh/document/60027
+    llms_file: llms/call.txt
 
   - id: rtc-engine
     name: RTC Engine（实时音视频引擎）
     description: 底层实时音视频引擎，提供进房、推流、拉流、混流等核心能力
-    platforms: [web, android, ios, flutter, electron]
-    docs_base_url: https://trtc.io/zh/document/35067
-    error_code_doc: https://trtc.io/zh/document/60027
+    llms_file: llms/rtc-engine.txt
 
   - id: live
     name: Live（直播）
     description: 直播组件，支持推流、拉流、连麦互动、弹幕、礼物、美颜等
-    platforms: [web, android, ios, flutter]
-    docs_base_url: https://trtc.io/zh/document/74594
-    error_code_doc: https://trtc.io/zh/document/60027
-    docs:
-      搭建视频直播: https://trtc.io/zh/document/74594
-      观众上麦: https://trtc.io/zh/document/74598
-      主播连线和PK: https://trtc.io/zh/document/74600
-      美颜: https://trtc.io/zh/document/74606
-      直播列表: https://trtc.io/zh/document/74610
-      观众管理: https://trtc.io/zh/document/74596
-      礼物: https://trtc.io/zh/document/74604
-      弹幕: https://trtc.io/zh/document/74602
-      音效: https://trtc.io/zh/document/74608
-      错误码: https://trtc.io/zh/document/60027
-      搭建直播间: https://trtc.io/zh/document/78279
+    llms_file: llms/live.txt
 
   - id: room
     name: Room（房间管理）
     description: 房间管理组件，提供房间创建、销毁、成员管理等能力
-    platforms: [web, android, ios, flutter]
-    docs_base_url: https://trtc.io/zh/document/54849
-    error_code_doc: https://trtc.io/zh/document/60027
-
-# ============================================================
-# Capability Domains — 能力域定义（按产品组织）
-# ============================================================
-domains:
-  chat:
-    - id: foundation
-      name: 初始化与认证
-      description: SDK 初始化、登录认证、多端登录、事件监听、网络状态
-
-    - id: message
-      name: 消息
-      description: 消息发送、接收、历史、撤回、已读回执、转发、离线推送
-
-    - id: conversation
-      name: 会话
-      description: 会话列表、未读计数、置顶、草稿、删除、标记与分组
-
-    - id: group
-      name: 群组
-      description: 群创建、加入退出、群管理、群消息、直播群、群属性
-
-    - id: user-relation
-      name: 用户与关系链
-      description: 用户资料、在线状态、好友管理、好友分组
-
-    - id: signaling
-      name: 信令
-      description: 信令收发、邀请/接受/拒绝/取消
-
-    - id: advanced
-      name: 进阶能力
-      description: 消息翻译、内容审核、社群
-
-  live:
-    - id: streaming
-      name: 直播推拉流
-      description: 主播开播、观众观看、推拉流管理
-
-    - id: interaction
-      name: 互动能力
-      description: 连麦、PK、观众管理
-
-    - id: commerce
-      name: 商业能力
-      description: 礼物、弹幕、直播列表
-
-    - id: effects
-      name: 效果增强
-      description: 美颜、音效
-
-  rtc-engine:
-    - id: rtc-core
-      name: 核心音视频
-      description: 进房、推流、拉流、混流、音视频设备管理
-
-  call:
-    - id: call-core
-      name: 通话核心
-      description: 1v1 通话、群组通话、呼叫/接听/挂断
-
-  room:
-    - id: room-core
-      name: 房间核心
-      description: 房间创建、销毁、成员管理、房间列表
+    llms_file: llms/room.txt
 
 # ============================================================
 # Cross-Product Relations — 跨产品关系模型
 # ============================================================
+# search skill 和 apply skill 用来处理跨产品查询和代码校验
 cross_product_relations:
   - id: live-chat-barrage
     products: [live, chat]
@@ -148,238 +64,147 @@ cross_product_relations:
 # ============================================================
 # Slices — 原子能力片段索引
 # ============================================================
-# 注：Chat slice 文件已清空，将按新结构重建
-# 以下保留索引定义供后续重新编写时参考
 slices:
 
-  # ---- RTC Engine 产品 ----
+  # ---- RTC Engine ----
   - id: rtc-engine/enter-room
     name: 进房
-    product: rtc-engine
-    source: baseline
-    priority: P0
-    domain: rtc-core
     tags: [enter-room, join, room, connection]
     platforms: [web, android, ios, flutter, electron]
     file: slices/rtc-engine/enter-room.md
-    description: >
-      进房参数配置（TRTCParams）、进房场景选择（视频通话/直播）、
-      进房回调处理、进房失败排障
+    description: 进房参数配置、进房场景选择、进房回调处理、进房失败排障
     status: planned
 
   - id: rtc-engine/publish-stream
     name: 推流
-    product: rtc-engine
-    source: baseline
-    priority: P0
-    domain: rtc-core
     tags: [publish, stream, video, audio, camera, microphone]
     platforms: [web, android, ios, flutter, electron]
     file: slices/rtc-engine/publish-stream.md
-    description: >
-      本地音视频采集与推流、摄像头/麦克风管理、
-      视频编码参数、推流状态回调
+    description: 本地音视频采集与推流、摄像头/麦克风管理、视频编码参数、推流状态回调
     status: planned
 
-  # ---- Live 产品 ----
-  # 基础设施
+  # ---- Live: 基础设施 ----
   - id: live/login-auth
     name: 登录认证
-    product: live
-    source: baseline
-    priority: P0
-    domain: streaming
     tags: [login, auth, SDKAppID, UserID, UserSig, LoginStore]
     platforms: [ios]
     file: slices/live/login-auth.md
-    description: >
-      LoginStore 登录认证、SDKAppID/UserID/UserSig 配置、
-      Info.plist 权限、Pod 依赖安装
+    description: LoginStore 登录认证、SDKAppID/UserID/UserSig 配置、Info.plist 权限、Pod 依赖安装
     status: active
 
   - id: live/device-control
     name: 设备控制
-    product: live
-    source: baseline
-    priority: P0
-    domain: streaming
     tags: [camera, microphone, device, DeviceStore, permission]
     platforms: [ios]
     file: slices/live/device-control.md
-    description: >
-      摄像头/麦克风的打开关闭、前后切换、设备权限处理
+    description: 摄像头/麦克风的打开关闭、前后切换、设备权限处理
     status: active
 
   - id: live/error-codes
     name: 错误码速查
-    product: live
-    source: baseline
-    priority: P0
-    domain: streaming
     tags: [error, error-code, troubleshoot, debug]
     platforms: [ios]
     file: slices/live/error-codes.md
-    description: >
-      Live 产品全部错误码速查：通用、设备、房间、权限、REST API
+    description: Live 产品全部错误码速查：通用、设备、房间、权限、REST API
     status: active
 
-  # 主播端
+  # ---- Live: 主播端 ----
   - id: live/anchor-preview
     name: 开播前预览
-    product: live
-    source: baseline
-    priority: P0
-    domain: streaming
     tags: [anchor, preview, LiveCoreView, pushView, camera]
     platforms: [ios]
     file: slices/live/anchor-preview.md
-    description: >
-      主播开播前的视频预览：LiveCoreView 创建、setLiveID、摄像头预览
+    description: 主播开播前的视频预览：LiveCoreView 创建、setLiveID、摄像头预览
     status: active
 
   - id: live/anchor-room-config
     name: 房间配置
-    product: live
-    source: baseline
-    priority: P1
-    domain: streaming
     tags: [room, config, metadata, LiveListStore, room-name, cover]
     platforms: [ios]
     file: slices/live/anchor-room-config.md
-    description: >
-      房间名称、封面、MetaData 配置及限制
+    description: 房间名称、封面、MetaData 配置及限制
     status: active
 
   - id: live/anchor-lifecycle
     name: 开播与结束
-    product: live
-    source: baseline
-    priority: P0
-    domain: streaming
     tags: [anchor, start, end, createLive, endLive, lifecycle]
     platforms: [ios]
     file: slices/live/anchor-lifecycle.md
-    description: >
-      主播开播 createLive、结束 endLive、事件监听、释放顺序
+    description: 主播开播 createLive、结束 endLive、事件监听、释放顺序
     status: active
 
-  # 观众端
+  # ---- Live: 观众端 ----
   - id: live/live-list
     name: 直播列表
-    product: live
-    source: baseline
-    priority: P0
-    domain: streaming
     tags: [list, fetch, category, slide-play, LiveListStore]
     platforms: [ios]
     file: slices/live/live-list.md
-    description: >
-      直播列表拉取、分页加载、分类筛选、滑动播放
+    description: 直播列表拉取、分页加载、分类筛选、滑动播放
     status: active
 
   - id: live/audience-watch
     name: 观众观看与退出
-    product: live
-    source: baseline
-    priority: P0
-    domain: streaming
     tags: [audience, watch, join, leave, playView, LiveCoreView]
     platforms: [ios]
     file: slices/live/audience-watch.md
-    description: >
-      观众进房观看、退出、被踢处理、后台退出
+    description: 观众进房观看、退出、被踢处理、后台退出
     status: active
 
   - id: live/audience-list
     name: 观众列表
-    product: live
-    source: baseline
-    priority: P1
-    domain: streaming
     tags: [audience, list, count, LiveAudienceStore]
     platforms: [ios]
     file: slices/live/audience-list.md
-    description: >
-      观众列表展示、人数统计、单列/双列布局
+    description: 观众列表展示、人数统计、单列/双列布局
     status: active
 
-  # 互动模块
+  # ---- Live: 互动模块 ----
   - id: live/barrage
     name: 弹幕
-    product: live
-    source: baseline
-    priority: P0
-    domain: commerce
     tags: [barrage, message, chat, mute, BarrageStore, danmu]
     platforms: [ios]
     file: slices/live/barrage.md
-    description: >
-      弹幕展示、发送文本/自定义弹幕、禁言管理、性能优化
+    description: 弹幕展示、发送文本/自定义弹幕、禁言管理、性能优化
     status: active
 
   - id: live/gift
     name: 礼物
-    product: live
-    source: baseline
-    priority: P0
-    domain: commerce
     tags: [gift, send, receive, GiftStore, reward]
     platforms: [ios]
     file: slices/live/gift.md
-    description: >
-      礼物列表拉取、发送/接收礼物、扣费回调、事件驱动 UI
+    description: 礼物列表拉取、发送/接收礼物、扣费回调、事件驱动 UI
     status: active
 
   - id: live/audience-manage
     name: 观众管理
-    product: live
-    source: baseline
-    priority: P1
-    domain: interaction
     tags: [manage, kick, admin, administrator, LiveAudienceStore]
     platforms: [ios]
     file: slices/live/audience-manage.md
-    description: >
-      踢出用户、设置/撤销管理员、人数频控
+    description: 踢出用户、设置/撤销管理员、人数频控
     status: active
 
   - id: live/beauty
     name: 基础美颜
-    product: live
-    source: baseline
-    priority: P1
-    domain: effects
     tags: [beauty, smooth, whiten, ruddy, BaseBeautyStore, filter]
     platforms: [ios]
     file: slices/live/beauty.md
-    description: >
-      磨皮/美白/红润调节、UI 滑块映射、状态订阅
+    description: 磨皮/美白/红润调节、UI 滑块映射、状态订阅
     status: active
 
   - id: live/audio
     name: 音效
-    product: live
-    source: baseline
-    priority: P1
-    domain: effects
     tags: [audio, voice, effect, changer, reverb, ear-monitor, AudioEffectStore]
     platforms: [ios]
     file: slices/live/audio.md
-    description: >
-      人声音量、耳返、变声、混响、reset
+    description: 人声音量、耳返、变声、混响、reset
     status: active
 
   - id: live/coguest-apply
     name: 连麦：观众申请
-    product: live
-    source: baseline
-    priority: P0
-    domain: interaction
     tags: [coguest, apply, seat, mic, CoGuestStore, connect]
     platforms: [ios]
     file: slices/live/coguest-apply.md
-    description: >
-      观众申请上麦、主播审批、上麦后设备管理、断开连麦
+    description: 观众申请上麦、主播审批、上麦后设备管理、断开连麦
     status: active
 
 # ============================================================
@@ -388,20 +213,13 @@ slices:
 scenarios:
   - id: 1v1-video-call
     name: 1v1 视频通话
-    product: rtc-engine
+    slices: [rtc-engine/enter-room, rtc-engine/publish-stream]
     file: scenarios/1v1-video-call.md
-    slices:
-      - rtc-engine/enter-room
-      - rtc-engine/publish-stream
-    description: >
-      两个用户进行 1v1 视频通话的完整流程，
-      包括进房、推流、拉流、挂断
+    description: 两个用户进行 1v1 视频通话的完整流程
     status: planned
 
   - id: entertainment-live-room
     name: 秀场直播间
-    product: live
-    file: scenarios/entertainment-live-room.md
     slices:
       - live/login-auth
       - live/device-control
@@ -418,27 +236,6 @@ scenarios:
       - live/audio
       - live/coguest-apply
       - live/error-codes
-    description: >
-      完整秀场直播间：主播开播+美颜+音效，观众进房+弹幕+礼物+连麦，
-      主播管理观众。覆盖 15/18 个 Live slice。
+    file: scenarios/entertainment-live-room.md
+    description: 完整秀场直播间：主播开播+美颜+音效，观众进房+弹幕+礼物+连麦
     status: active
-
-# ============================================================
-# Implementation Phases — 实施阶段
-# ============================================================
-phases:
-  - id: phase-0
-    name: 框架重构
-    description: 框架梳理 + Search Skill 重写，为多产品扩展铺平道路
-
-  - id: phase-1
-    name: 主线骨架
-    description: 按产品逐步编写主线 slice，覆盖各产品 SDK 核心骨架
-
-  - id: phase-2
-    name: 反馈血肉
-    description: 根据用户反馈频次排序，逐步补充反馈 slice
-
-  - id: phase-3
-    name: 场景组合
-    description: 每积累 3-5 个相关 slice 后，编写一个 scenario

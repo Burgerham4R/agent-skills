@@ -90,9 +90,11 @@ Slice（原子能力）是 TRTC AI 知识库的最小知识单元。每个 slice
 ```yaml
 - id: chat/multi-instance
   name: 多端登录与互踢
-  source: baseline          # baseline（主线）| feedback（反馈）
-  priority: P0              # P0（核心必备）/ P1（高频需要）/ P2（锦上添花）
-  domain: foundation        # 能力域分类
+  tags: [multi-instance, kick-offline, login]
+  platforms: [web, android, ios, flutter]
+  file: slices/chat/multi-instance.md
+  description: 多端登录策略配置、互踢回调处理、常见错误码
+  status: active          # active | planned
 ```
 
 ---
