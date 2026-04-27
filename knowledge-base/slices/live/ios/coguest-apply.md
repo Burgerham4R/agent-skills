@@ -8,7 +8,7 @@ api_docs:
 
 # 观众申请连麦 — iOS 实现
 
-## 前置条件
+## 前置条件 [必填]
 
 **通用依赖**：见 [login-auth 平台 slice](../login-auth.md)（SDK 安装、Info.plist 权限声明）
 
@@ -19,7 +19,7 @@ api_docs:
 - 已进入直播间，持有有效的 `liveID`（→ live/audience-watch）
 - `CoGuestStore` 已通过 `create(liveID:)` 初始化
 
-## 代码示例
+## 代码示例 [必填]
 
 ### 观众端：申请 → 等待 → 开设备 → 连麦 → 断开
 
@@ -339,7 +339,7 @@ final class HostCoGuestViewModel: ObservableObject {
 }
 ```
 
-## 调用时序
+## 调用时序 [条件必填：多角色异步交互 或 回调嵌套 ≥3 层]
 
 ```
 【观众端】
@@ -387,7 +387,7 @@ coGuestStore.applyForSeat(seatIndex: -1, timeout: 30, extraInfo: nil)
 .onGuestApplicationCancelled(guestUser:) → 从待审批列表移除
 ```
 
-## 平台特有注意事项
+## 平台特有注意事项 [必填：至少 1 条]
 
 ### 1. seatIndex 参数
 `applyForSeat` 包含 `seatIndex: Int` 参数（默认值 `-1`），`-1` 表示由系统自动分配麦位。若业务有固定麦位布局（如卡拉 OK 多人），可传具体的麦位索引（从 0 开始）。
@@ -441,46 +441,66 @@ case .failure(let error):
     self.errorMessage = "操作失败"
 ```
 
-## 代码生成约束
+## 代码生成约束 [必填]
 
 本 section 供 AI 在生成/验证代码时使用，定义了此 slice 在 iOS 平台上的硬性约束。
+所有规则必须基于实际 SDK 行为核实后填入，不允许凭经验推测。
 
-### 编译必要条件
+### 编译必要条件 [必填]
 
 - **通用条件**：见 [login-auth 平台 slice](login-auth.md)（pod 安装、Info.plist 权限）
-- **额外导入**: `import Combine` — 事件订阅依赖 Combine 框架
-- **最低平台版本**: iOS 15.0+（Combine `store(in: &$published)` 语法要求，高于 login-auth 的 iOS 13.0+ 基线）
+- **额外导入**: `TODO: 列出本 slice 相对 login-auth 额外需要的 import（例如 Combine）`
+- **最低平台版本**: `TODO: 若高于 login-auth 基线（iOS 13.0+），填入具体版本并说明原因`
 
-### 生成规则
+### 生成规则 [必填]
 
 #### MUST（生成时必须包含）
 
-1. **所有 Combine sink 必须 `[weak self]`** — `CoGuestStore` 的 publisher 生命周期可能长于 ViewModel/ViewController。不用 `[weak self]` 导致循环引用，ViewModel 永远不释放，连带整个直播间页面泄漏。
-2. **`AnyCancellable` 必须存储为实例属性** — `var cancellables = Set<AnyCancellable>()`。如果声明为局部变量，订阅在方法返回时立即取消，主播端收不到任何申请事件（最常见的"主播无响应"排障原因）。
-3. **UI 更新必须 `receive(on: DispatchQueue.main)`** — `hostEventPublisher` / `guestEventPublisher` 的回调线程不确定。不切主线程更新 `@Published` 属性会触发 SwiftUI/UIKit 线程安全 crash。
-4. **`applyForSeat` 的 completion failure 必须处理 `-2340`** — 麦位满错误需要特殊 UI 提示（区别于通用错误），否则用户看不到有意义的反馈。
-5. **`acceptInvitation` 参数必须用 `inviterID`，不是 `userID`** — 这是 SDK API 设计的参数名。用 `userID` 编译通过但逻辑错误（传了观众自己的 ID），导致接受邀请永远失败。
+<!-- TODO: 基于实际 SDK 行为填入本 slice 独有的 MUST 规则。
+     每条格式：**规则** — 违反后果。**Verify**: 可检查手段
+     规则必须来自 SDK 文档 / 实测 / 研发明确约定，不要凭经验推测。
+-->
+
+1. `TODO: 规则 1` — `TODO: 违反后果`
+   **Verify**: `TODO: grep 正则 / 编译报错 / 运行时日志 / 人工观察`
+2. `TODO: 规则 2 ...`
 
 #### MUST NOT（生成时绝不能出现）
 
-1. **不要在 `deinit` 中做事件取消/清理** — iOS 中 ViewController 的 `deinit` 可能因循环引用永远不被调用。清理逻辑放在 `viewDidDisappear` 或显式 `cleanup()` 方法中。
-2. **不要在 `applyForSeat` 成功回调中开设备** — `.success` 仅表示申请发送成功（信令发出），不是主播同意。开设备必须等 `.onGuestApplicationResponded(isAccept: true)`。混淆这两步会导致观众在未获批时就推流。
-3. **不要自行构造 `CoGuestStore()` 实例** — 必须通过 `CoGuestStore.create(liveID:)` 工厂方法创建。直接构造缺少内部初始化，所有 API 调用静默失败。
-4. **不要省略 `errorMessage` 的用户可见处理** — 每个 `.failure` 分支都必须有面向用户的提示（`@Published var errorMessage` 或 alert），不能只 `print`。只 print 的错误用户完全感知不到。
+<!-- TODO: 基于实际 SDK 行为填入本 slice 独有的 MUST NOT 规则。
+     重点是「看起来能跑但逻辑错误」的写法 — 需要 SDK 语义支撑才能列出。
+-->
 
-### 集成检查点
+1. `TODO: 规则 1` — `TODO: 违反后果`
+   **Verify**: `TODO: 可检查手段`
+2. `TODO: 规则 2 ...`
 
-- **SDK 初始化**: 确认项目的 AppDelegate/SceneDelegate 中已完成 `LoginStore` 初始化和登录。本 slice 依赖 `LoginStore.shared.isLogin == true`（参考 slice: `live/login`）
-- **已有直播间页面**: 如果项目已有直播间 ViewController，`AudienceCoGuestViewModel` / `HostCoGuestViewModel` 应作为该页面的属性注入，不要创建新的 ViewController
-- **设备管理冲突**: 如果项目已有 `DeviceStore` 相关调用（如美颜 slice 的 camera 控制），确认 `openLocalCamera` / `closeLocalCamera` 不会和已有逻辑互相覆盖。建议统一通过一个设备管理层调用
-- **Combine 版本**: 如果项目混用 RxSwift 和 Combine，确认不会出现两套订阅管理。本 slice 的代码纯 Combine 实现
-- **文件组织**: 本 slice 生成 2 个新文件（`AudienceCoGuestViewModel.swift` + `HostCoGuestViewModel.swift`），不修改已有文件。但需要在已有的直播间页面中 import 和初始化这两个 ViewModel
+### 集成检查点 [必填]
 
-### 可运行验证
+<!-- TODO: 结合本 slice 在已有 iOS 项目中的集成经验填入，例如：
+     - 是否与项目已有的 SDK 初始化冲突
+     - 是否依赖其他 slice 的前置状态（引用具体 slice ID）
+     - 对已有代码的侵入性（新增文件 vs 修改已有文件）
+-->
 
-- **编译验证**: `xcodebuild build -workspace {Project}.xcworkspace -scheme {Scheme} -destination 'platform=iOS Simulator,name=iPhone 16' -quiet` — 预期 exit code 0
-- **最小运行时验证**:
-  1. 启动 App → 进入直播间
-  2. 观众端点击"申请连麦" → 控制台应输出 `[CoGuest] 申请已发送，等待主播响应...`
-  3. 主播端控制台应输出 `onGuestApplicationReceived` 事件
-  4. 如果主播未订阅（故意测试错误路径），30 秒后观众端应显示"申请超时，请重试"
+- `TODO: 集成检查点 1`
+- `TODO: 集成检查点 2`
+
+## 验证矩阵 [必填]
+
+AI 生成代码后或人工 review 时，自上而下跑一遍即可完成验收。
+
+<!-- TODO: 基于本 slice 实际填好的 MUST / MUST NOT 规则，逐条映射到矩阵的层级 1/2。
+     另外补充：
+     - 至少 1 条层级 3（运行时日志锚点），基于代码示例中实际的 print 语句填入
+     - 至少 1 条层级 4（业务行为），基于产品级 ALWAYS / NEVER 的运行时体现填入
+-->
+
+| 层级 | 检查项 | 验证手段 | 预期结果 |
+|------|--------|----------|---------|
+| 1. 编译级 | `TODO: 模块导入齐全` | `xcodebuild build -workspace {Project}.xcworkspace -scheme {Scheme} -destination 'platform=iOS Simulator,name=iPhone 16' -quiet` | exit code 0 |
+| 1. 编译级 | `TODO: 最低平台版本达标` | 查 `IPHONEOS_DEPLOYMENT_TARGET` | `TODO: ≥ 版本` |
+| 2. 静态规则级 | `TODO: 对应 MUST 规则 1` | `TODO: grep 正则` | `TODO: 匹配条件` |
+| 2. 静态规则级 | `TODO: 对应 MUST NOT 规则 1` | `TODO: grep 正则` | `TODO: 不应匹配` |
+| 3. 运行时级 | `TODO: 关键路径日志` | `TODO: 触发操作 → 查 Xcode 控制台` | `TODO: 日志内容` |
+| 4. 业务行为级 | `TODO: 业务语义观察` | `TODO: 操作步骤` | `TODO: UI / 硬件状态` |

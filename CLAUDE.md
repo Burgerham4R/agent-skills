@@ -15,8 +15,8 @@ ai-integration/
 │   └── topic/SKILL.md                 # 场景引导
 ├── llms.txt                           # llms.txt 内容规范 + 初始模板（顶层产品索引）
 ├── llms/                              # llms.txt 子文件模板（最终由文档站构建流程自动生成）
-│   ├── {product}.txt                  # 产品概述 + 平台链接（如 live.txt, chat.txt）
-│   └── {product}-{platform}.txt       # 平台概述 + 官方文档链接（如 live-ios.txt）
+│   ├── {product}.txt                  # 产品概述 + 平台链接（如 live.txt, conference.txt）
+│   └── {product}/{platform}.txt       # 平台概述 + 官方文档链接（如 live/ios.txt, conference/web.txt）
 ├── knowledge-base/
 │   ├── index.yaml                     # 全量索引（v4.0 — products/slices/scenarios/cross_product_relations）
 │   ├── slice-spec.md                  # Slice 定义规范（拆分标准、编写规范、规划方法论）
@@ -48,7 +48,7 @@ Slice 分为两层：
 ### llms.txt（LLM 文档发现）
 遵循 [llms.txt 标准](https://llmstxt.org/) 的渐进式文档披露系统，供外部 LLM（ChatGPT、Claude 等）发现和加载 TRTC 文档。
 
-**三级结构**：`llms.txt`（产品索引）→ `{product}.txt`（产品概述 + 平台链接）→ `{product}-{platform}.txt`（平台概述 + 官方文档链接）
+**三级结构**：`llms.txt`（产品索引）→ `{product}.txt`（产品概述 + 平台链接）→ `{product}/{platform}.txt`（平台概述 + 官方文档链接）
 
 **定位**：仓库中的文件是**内容规范和初始模板**，最终由 trtc.io 文档站构建流程自动生成并部署到 CDN。文档站团队根据此模板编写生成脚本，从文档源（MDX/Markdown）自动产出 llms.txt 系列文件，确保文档更新时自动同步。
 

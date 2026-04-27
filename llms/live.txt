@@ -12,10 +12,10 @@
 
 ## Platforms
 
-- [Live — iOS](https://trtc.io/llms/live-ios.txt)
-- [Live — Android](https://trtc.io/llms/live-android.txt)
-- [Live — Web](https://trtc.io/llms/live-web.txt)
-- [Live — Flutter](https://trtc.io/llms/live-flutter.txt)
+- [Live — iOS](https://trtc.io/llms/live/ios.txt)
+- [Live — Android](https://trtc.io/llms/live/android.txt)
+- [Live — Web](https://trtc.io/llms/live/web.txt)
+- [Live — Flutter](https://trtc.io/llms/live/flutter.txt)
 
 ## Related Products
 

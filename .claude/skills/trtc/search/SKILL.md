@@ -1,13 +1,15 @@
 ---
 name: trtc-search
 description: >
-  Search the TRTC knowledge base for specific SDK capabilities, API patterns,
-  error codes, and integration scenarios across all products (Chat, Call, RTC Engine,
-  Live, Room). Use this skill when the user asks "how do I do X with TRTC",
-  "what's the API for Y", "find me info about Z", asks about specific error codes,
-  wants to compare approaches across platforms, or needs to discover capabilities.
-  Handles cross-product queries (e.g., "直播弹幕" spanning Live + Chat) and
-  falls back to official documentation when knowledge base content is unavailable.
+  Internal AI-facing slice lookup for the TRTC knowledge base. Called by
+  `onboarding` (to load slice content during Path A2 integration) and by
+  `docs` (to do slice-first lookup before falling back to llms.txt). Takes
+  (product, platform, query, intent) and returns matched slices with source
+  attribution and confidence. Covers all products (Chat, Call, RTC Engine,
+  Live, Room) and handles cross-product relations (e.g., "直播弹幕" spanning
+  Live + Chat). **NOT** routed to by user intent directly — users see the
+  final answer composed by the calling skill, not raw slice content from here.
+  Does NOT resolve llms.txt URLs; that is the `docs` skill's responsibility.
 ---
 
 # TRTC Knowledge Base Search
@@ -26,12 +28,12 @@ You search the TRTC knowledge base to find relevant atomic capabilities (slices)
 ### Step 1: Read the index
 
 Read `knowledge-base/index.yaml` to get the full catalog. Key sections:
-- **products**: Product list with `id`, `name`, `description`, `llms_file` (path to llms txt for docs/demo links)
+- **products**: Product list with `id`, `name`, `description`, `llms_file` (path reference used by the `docs` skill, not by search)
 - **cross_product_relations**: Cross-product dependency mappings
 - **slices**: Each slice has `id`, `name`, `tags`, `platforms`, `file`, `description`, `status`
 - **scenarios**: Each scenario has `id`, `name`, `slices`, `file`, `description`
 
-**Doc URL resolution:** When you need official doc links (for fallback or citation), read the product's `llms_file` (e.g., `llms/live.txt` or `llms/live-ios.txt`). These contain all doc URLs organized by feature.
+> **Out of scope**: do NOT read llms files, do NOT fetch official doc URLs. If the caller needs a doc URL (e.g., fallback when no slice matches an error code), return a `no_match` status and let the calling skill (`docs`) do the llms.txt lookup.
 
 ### Step 2: Seven-Strategy Matching (by priority)
 
@@ -104,25 +106,17 @@ Execute fallbacks in order, stop at the first that provides useful content:
 Find the closest partial match from Step 2 and follow its `related` links.
 Load those related slices as "possibly relevant" results.
 
-#### F2. Product Documentation Fallback
-Read the product's llms file (`llms/{product}.txt` or `llms/{product}-{platform}.txt`) to find relevant doc URLs:
-- Check for feature-specific links first
-- Fall back to the product overview page
-- Mark the source clearly: "Source: Official docs (trtc.io)"
-
-> **llms.txt integration**: Doc URLs come from llms files, not from index.yaml. Each product+platform combination has its own llms file with categorized doc links.
-
-#### F3. Cross-Product Suggestion
+#### F2. Cross-Product Suggestion
 If the query relates to a product feature that depends on another product:
 - Check `cross_product_relations` for applicable mappings
 - Suggest: "Live 弹幕功能依赖 Chat SDK 的直播群能力，可参考 chat/group-avchatroom"
 
-#### F4. General Knowledge
-If nothing in the KB matches at all:
-- Provide an answer based on general TRTC knowledge
-- Mark clearly: "⚠️ 通用知识，请对照官方文档验证"
-- Always include a link to the relevant doc from the product's llms file
-- Say: "知识库暂未收录此内容（KB slice 暂无），以下为通用知识供参考"
+#### F3. No Match — defer to caller
+If nothing in the KB matches at all (F1 and F2 both empty):
+- Return a `no_match` result with the product/platform/query context and a short reason
+- Do NOT invent general-knowledge answers
+- Do NOT fetch or cite llms.txt URLs — the calling skill (`docs`) owns that fallback
+- Caller signals: "knowledge base has no slice for this; please fall back to llms.txt or tell the user the capability isn't documented yet"
 
 ### Step 6: Return Results
 
@@ -130,12 +124,11 @@ Structure the response with:
 - **Matched slices** and their content (or summaries)
 - **Source attribution**:
   - `📚 KB slice` — from local knowledge base
-  - `📄 官方文档` — from WebFetch of trtc.io
-  - `⚠️ 通用知识` — general knowledge, needs verification
+  - `🔗 no-match (→ defer to docs)` — no slice matched; caller should fall back to llms.txt
 - **Confidence level**:
   - 🟢 高 — exact match (S1/S2/S3)
   - 🟡 中 — keyword/cross-product match (S4/S5/S6)
-  - 🔴 低 — fuzzy match or fallback (S7/F1-F4)
+  - 🔴 低 — fuzzy match or fallback (S7/F1-F2)
 - **Related slices** for further exploration
 
 ### Code example rules
@@ -192,9 +185,9 @@ Use this mapping to expand search queries bidirectionally:
 ### Missing Content
 | Scenario | Handling |
 |----------|---------|
-| User asks about a product with no slices (e.g., Call, Room) | Return product description from index → read llms file for doc links → mark "No KB slice yet" |
-| Slice with `status: planned` | Return index description → say "详细内容即将上线" → provide trtc.io link |
-| Platform requested but no platform_files entry | Return product-level overview → say "该平台代码示例暂未收录" |
+| User asks about a product with no slices (e.g., Call, Room) | Return product description from index + `no_slice` status; let caller (docs) fall back to llms.txt |
+| Slice with `status: planned` | Return the slice's index description + `status: planned` flag; let caller decide fallback |
+| Platform requested but no platform_files entry | Return product-level overview + `no_platform_file` flag; say "该平台代码示例暂未收录" to the caller, do NOT synthesize code |
 
 ### Cross-Product Questions
 | Scenario | Handling |
@@ -209,7 +202,7 @@ Use this mapping to expand search queries bidirectionally:
 | Vague query like "消息" | Return top 3-5 message-related slices → let user narrow down |
 | Mixed Chinese-English "怎么 kick offline" | Apply keyword mapping → match to relevant slice |
 | Only an error code "6208" | S1 exact match → return slice + troubleshooting guide |
-| Error code not in any slice | Return "Error code not in KB" → read llms file for error code doc link |
+| Error code not in any slice | Return `no_match`; caller (docs) falls back to official error-code doc via llms.txt |
 
 ### Platform Edge Cases
 | Scenario | Handling |

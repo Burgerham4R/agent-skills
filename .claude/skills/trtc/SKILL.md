@@ -7,11 +7,11 @@ description: >
   whenever the user asks about TRTC, Tencent Cloud IM/Chat, real-time audio/video,
   RTC integration, multi-device login, entering rooms, publishing streams, live
   streaming with TRTC, or any question about 腾讯云即时通信、实时音视频、TRTC SDK
-  集成、排障. Also trigger when the user pastes TRTC-related code and wants help
-  debugging, reviewing, or improving it, even if they don't mention "TRTC" by name —
+  集成、排障. Also trigger when the user describes a bug or error in TRTC-related
+  code and wants help debugging, even if they don't mention "TRTC" by name —
   look for imports like @tencentcloud/chat, TRTC SDK class names, or TRTC error codes
-  (6206, 6208, 70001). This is the entry point that routes to sub-skills (search,
-  apply, topic) based on intent.
+  (6206, 6208, 70001). This is the entry point that routes to sub-skills (onboarding,
+  search, topic, docs) based on intent.
 ---
 
 # TRTC Integration Assistant
@@ -34,12 +34,28 @@ Route to `onboarding/SKILL.md` when ANY of these are true:
 - **User wants to add/integrate/implement a feature** ("I want to add gift function", "help me implement barrage", "add live streaming to my app") — this MUST go through onboarding Path A2, do NOT directly dump slice content
 
 **When to skip onboarding and route directly to sub-skills:**
-- User asks a conceptual/learning question ("how does gift system work?", "what is co-guest?") → search skill
-- User pastes code and wants review → apply skill
-- User reports a specific error with code context ("my createLive returns -2105") → search + apply
-- User asks for specific API details ("what are the parameters for applyForSeat?") → search skill
+- User asks a conceptual/learning question ("how does gift system work?", "what is co-guest?") → `docs` skill (reads llms.txt directly; slices don't necessarily cover conceptual explanations)
+- User reports a specific error with code context ("my createLive returns -2105") → onboarding Path B (troubleshooting)
+- User asks for specific API details ("what are the parameters for applyForSeat?") → `docs` skill (follows slice-first fallback chain)
+- User asks a fact / decision question (pricing, quotas, product comparison, migration) → `docs` skill (reads llms.txt directly)
 
-**The key distinction:** "I want to ADD/BUILD/IMPLEMENT X" → onboarding Path A2. "I want to UNDERSTAND/LEARN about X" → search skill.
+**Review-request handling (hard rule — triage, do NOT refuse):** When the user uses review / audit / cross-check / validate / 帮我看看 / 是否正确 / check my X wording, do NOT perform a code-style review AND do NOT refuse outright. Instead **triage to the underlying intent**:
+
+| User's actual intent | Signal | Route |
+|---|---|---|
+| A. Symptom (not working, crash, black screen, login fails) | pasted code + "doesn't work" / specific symptom | onboarding Path B (B-Q1 symptom tree) |
+| B. Error code lookup | numeric error code present (7013, 20009, -100006, etc.) | `docs` skill — must follow docs/SKILL.md's "slice-first fallback chain" (read `slice.error_codes` before reading llms.txt) |
+| C. Official pattern / "expected integration model" / "current official guidance" | "the right way / expected pattern / how should I" | `docs` skill — must follow docs/SKILL.md's "slice-first fallback chain" (read slice ALWAYS/NEVER + code examples before reading llms.txt) |
+| D. API comparison ("X vs Y", "when to use X") | two APIs named | `docs` skill — must follow docs/SKILL.md's "slice-first fallback chain" (read slice API sections + relevant scenario before reading llms.txt) |
+| E. Pure style / quality review with no concrete question | "is my code good / any improvements / 写得怎么样" alone | **Decline** — the apply skill is an internal quality gate, not a user-facing review service |
+
+If the intent is ambiguous, onboarding B-Q0 will ask ONE triage question. Never just say "I don't do code review" and stop — you must land the user on A–D if any signal is there.
+
+**Answer-shape constraint (applies on every turn):** even when routing to A–D, your reply MUST NOT take review shapes — no "Critical Review Checklist", no "✅ Correct pattern vs ❌ Incorrect pattern" contrast as the main structure, no "Improvements you should make" list, no "Fixed version of your code" as a finished artifact. These shapes, produced after a review-worded request, constitute review behaviour even without the words "apply skill" / "verify" / "review your code". Use documentation / factual-lookup shapes instead (cite slice X, quote official pattern, link the error-code doc).
+
+**The key distinction:** "I want to ADD/BUILD/IMPLEMENT X" → onboarding Path A2. "I want to UNDERSTAND/LEARN about X" → `docs` skill.
+
+`search` is NEVER a user-facing destination. It is an internal AI-facing slice lookup called by `onboarding` (to fetch slice content during integration) or by `docs` (to check slice content before falling back to llms.txt). Do not route users to `search` directly.
 
 If onboarding is detected, read and follow `onboarding/SKILL.md` — do NOT proceed with the normal routing below. **Never dump raw slice content directly to the user. Always go through the onboarding flow first.**
 
@@ -84,9 +100,15 @@ Based on what the user wants, take the appropriate path:
 
 | User intent | What to do |
 |-------------|------------|
-| **Learn / Understand** — "how does X work?", "what is Y?", "怎么用 X？", asks about specific API/error code | **Delegate to `search/SKILL.md`** — pass the identified product, platform, and query. Do NOT read slices or answer directly; the search sub-skill handles discovery, matching, and response formatting. |
-| **Review / Validate / Integrate code** — "check my code", "is this right?", pastes code, or AI-generated code needs verification before delivery | Delegate to `apply/SKILL.md` for the full verification pipeline: constraint compliance → compilation → integration safety. Also used by topic/onboarding skills as a quality gate before delivering generated code. |
+| **Learn / Understand** — "how does X work?", "what is Y?", "怎么用 X？" (conceptual questions without a specific error code, pattern, or API comparison) | **Delegate to `docs/SKILL.md`** — docs reads the relevant llms.txt directly. Do NOT route to `search`; do NOT read slices yourself. |
+| **Error code / Official pattern / API comparison** — numeric error code, "the right way to X", "X vs Y" | **Delegate to `docs/SKILL.md`** — docs will follow its "slice-first fallback chain" (read `slice.error_codes` / ALWAYS-NEVER / API sections first; fall back to llms.txt only if slices don't cover it). |
 | **Build a complete feature** — "I want to implement X", "guide me through Y" | Find a matching scenario in `knowledge-base/index.yaml`. If one exists, load it and walk through step by step. If none exists, compose one from relevant slices. See `topic/SKILL.md` for the guided flow. |
+| **Troubleshoot an issue** — user reports error, crash, unexpected behavior | Delegate to `onboarding/SKILL.md` Path B. |
+| **Fact / decision question** — pricing, quotas, capability limits, comparison, migration | Delegate to `docs/SKILL.md` (reads llms.txt directly; slices don't carry pricing/quota data). |
+
+> **Internal quality gate (not a user-facing route):** `apply/SKILL.md` runs silently inside onboarding/topic flows as a compile + integration check on AI-generated code. It is never exposed as an option the user can request, and "review my code" is not an entry point this skill offers.
+>
+> **Internal slice lookup (not a user-facing route):** `search/SKILL.md` is called by `onboarding` and `docs` to locate relevant slices (AI-facing). Users never get routed to `search` directly — they see the final answer composed by the caller.
 
 ### 4. Load knowledge
 
@@ -125,7 +147,8 @@ For more complex interactions, these sub-skills provide specialized workflows. Y
 
 | Sub-skill | When to use | Path |
 |-----------|------------|------|
-| **onboarding** | User is new, wants to get started, run a demo, or start a fresh integration | `onboarding/SKILL.md` |
-| **search** | User needs to find a specific slice (atomic capability) or scenario (integration workflow) | `search/SKILL.md` |
-| **apply** | User has code to validate, or AI-generated code needs verification before delivery | `apply/SKILL.md` |
+| **onboarding** | User is new, wants to get started, run a demo, start a fresh integration, or troubleshoot an issue | `onboarding/SKILL.md` |
+| **docs** | User asks any Learn / Understand / Fact / error-code / API / pricing question. docs decides internally whether to go slice-first (for B/C/D types) or llms.txt-direct (for conceptual / pricing / migration) | `docs/SKILL.md` |
 | **topic** | User wants step-by-step guidance through a complete scenario | `topic/SKILL.md` |
+| **search** _(internal only)_ | AI-facing slice lookup called by `onboarding` and `docs`. Never routed to by user intent directly. | `search/SKILL.md` |
+| **apply** _(internal only)_ | Silent compile + integration gate that onboarding/topic flows run on AI-generated code. Never routed to directly by user intent. | `apply/SKILL.md` |
