@@ -295,7 +295,7 @@ api_docs:                   # [必填] 该平台 API 参考文档链接（至少
 
 ##### 代码生成约束 [必填]
 
-此 section 是给 AI 读的硬性规则，**每一条规则必须自带验证手段**（对应原子一「可 verify」）。格式如下：
+此 section 是给 AI 读的硬性规则，**每一条规则必须自带机器可执行的验证手段**（对应原子一「可 verify」）。规则格式如下（结构化，推荐）：
 
 ```markdown
 ### 编译必要条件 [必填]
@@ -306,12 +306,36 @@ api_docs:                   # [必填] 该平台 API 参考文档链接（至少
 ### 生成规则 [必填]
 
 #### MUST（生成时必须包含）
-1. **规则内容** — 违反后果。**Verify**: {grep 正则 / 编译错误信息 / 运行时日志特征}
-2. ...
+
+1. **规则内容** — 违反后果。
+   ```yaml
+   verify:
+     - type: grep
+       in: "Views/**/*.swift"
+       pattern: '\.sink\s*\{\s*\[weak self\]'
+       expect: { op: ">=", value: 1 }
+   ```
+
+2. **规则内容** — 违反后果。
+   ```yaml
+   verify:
+     - type: compile
+       expect: { exit_code: 0 }
+     - type: runtime_log
+       trigger: "观众点击申请连麦按钮"
+       pattern: '\[CoGuest\] 申请已发送'
+       expect: { op: "contains" }
+   ```
 
 #### MUST NOT（生成时绝不能出现）
-1. **规则内容** — 违反后果。**Verify**: {grep 正则 / 编译错误信息 / 运行时日志特征}
-2. ...
+
+1. **规则内容** — 违反后果。
+   ```yaml
+   verify:
+     - type: not_grep
+       in: "**/*.swift"
+       pattern: '\.failure\b[^}]*openLocalCamera'
+   ```
 
 ### 集成检查点 [必填]
 - 是否与项目已有 SDK 初始化冲突
@@ -319,11 +343,115 @@ api_docs:                   # [必填] 该平台 API 参考文档链接（至少
 - 对已有代码的侵入性（新增 vs 修改）
 ```
 
-**Verify 写法示例**：
-- `**Verify**: grep -E "\\.sink\\s*\\{\\s*\\[weak self\\]"` — 静态可检查
-- `**Verify**: 编译报错 "Cannot find 'XXX' in scope"` — 编译器可捕获
-- `**Verify**: 运行时日志出现 "[CoGuest] 申请已发送，等待主播响应..."` — 运行时可观察
-- `**Verify**: 人工 — 连麦 30 秒无响应后 UI 显示"申请超时"` — 无法机检，仅人检（应少用）
+> **为什么要结构化**：apply skill 在验证代码时会按 `verify.type` 分发到对应的执行器（grep / 编译 / 运行时日志 / 人工）。自由文本 Verify 无法机器消费，apply 只能降级为「人工核对」并在报告中加 `warning: legacy_verify_format` 标注。见下方 **Verify 类型规范**。
+
+##### Verify 类型规范
+
+每条 MUST / MUST NOT 规则的 `verify` 是一个**数组**（同一条规则可能同时要求静态 grep + 运行时日志）。数组的每一项是一个 verify 对象，字段如下：
+
+**公共字段**
+
+| 字段 | 是否必填 | 说明 |
+|------|---------|------|
+| `type` | 必填 | 枚举：`grep` / `not_grep` / `compile` / `runtime_log` / `manual` |
+| `description` | 可选 | 一句话说明这条 verify 在查什么（给人读，不影响执行）|
+
+**按 type 分字段**
+
+| type | 附加字段 | 含义 |
+|------|---------|------|
+| `grep` | `in`（glob，默认 `**/*`）、`pattern`（正则）、`expect`（见下）| 在 `in` 匹配的文件里搜 `pattern`，命中次数须满足 `expect` |
+| `not_grep` | `in`、`pattern` | 在 `in` 匹配的文件里 `pattern` **必须命中 0 次**；不需要写 `expect` |
+| `compile` | `expect.exit_code`（默认 0） | 触发一次平台编译（命令由 apply 根据 platform 选），exit code 须等于 `expect.exit_code` |
+| `runtime_log` | `trigger`（人话描述的触发动作）、`pattern`（正则或子串）、`expect.op`（`contains` / `match`，默认 `contains`）| 执行 `trigger` 描述的操作后抓日志，按 `pattern` 检查 |
+| `manual` | `description`（必填，替代公共字段）| 无法机器执行，必须人工观察。apply 不跑，只把这条放到 `needs_human_review` 列表 |
+
+**`expect.op` 取值**（仅 `grep` / `runtime_log` 使用）
+
+| op | 含义 | `value` 语义 |
+|----|------|------------|
+| `==` | 命中次数正好等于 | 整数 |
+| `>=` | 命中次数大于等于 | 整数 |
+| `<=` | 命中次数小于等于 | 整数 |
+| `>` / `<` | 严格大于 / 小于 | 整数 |
+| `contains` | 日志中出现子串即可 | 字符串（`runtime_log` 默认）|
+| `match` | 日志整行正则匹配 | 正则 |
+
+**`in` 字段**
+
+- glob 语法，相对项目根；默认 `**/*`
+- 多个 glob 用数组：`in: ["Views/**/*.swift", "Stores/**/*.swift"]`
+- 常见写法：`Views/**/*.swift`、`src/**/*.{ts,tsx}`、`lib/**/*.dart`
+
+**每种 type 的最小示例**
+
+```yaml
+# 1. grep —— 必须出现 N 次
+verify:
+  - type: grep
+    description: "所有 Combine sink 都必须带 [weak self]"
+    in: "Views/**/*.swift"
+    pattern: '\.sink\s*\{\s*\[weak self\]'
+    expect: { op: ">=", value: 1 }
+```
+
+```yaml
+# 2. not_grep —— 禁止出现的模式
+verify:
+  - type: not_grep
+    description: "不允许在 .failure 分支打开本地设备"
+    in: "**/*.swift"
+    pattern: '\.failure[^}]*openLocalCamera'
+```
+
+```yaml
+# 3. compile —— 跑一次编译看能否通过
+verify:
+  - type: compile
+    description: "CoGuestStore 的 apply 方法第 2 个参数是 Int"
+    expect: { exit_code: 0 }
+```
+
+```yaml
+# 4. runtime_log —— 触发操作后观察日志锚点
+verify:
+  - type: runtime_log
+    description: "申请连麦后主播端能收到事件"
+    trigger: "观众端点击「申请连麦」按钮，等待 3 秒"
+    pattern: '\[CoGuest\] onGuestApplicationReceived'
+    expect: { op: "contains" }
+```
+
+```yaml
+# 5. manual —— 无法机器执行，放到人工 review 队列
+verify:
+  - type: manual
+    description: "主播端 UI 在等待 30 秒后显示『申请超时』文案"
+```
+
+**组合示例（同一规则多重验证）**
+
+```yaml
+# "sink 必须加 [weak self]" 既有静态检查，也有编译兜底
+verify:
+  - type: grep
+    in: "Views/**/*.swift"
+    pattern: '\.sink\s*\{\s*\[weak self\]'
+    expect: { op: ">=", value: 1 }
+  - type: compile
+    expect: { exit_code: 0 }
+```
+
+**过渡期兼容（仅用于存量 slice）**
+
+仍允许旧的自由文本写法：
+
+- `**Verify**: grep -E "\\.sink\\s*\\{\\s*\\[weak self\\]"`
+- `**Verify**: 编译报错 "Cannot find 'XXX' in scope"`
+- `**Verify**: 运行时日志出现 "[CoGuest] 申请已发送，等待主播响应..."`
+- `**Verify**: 人工 — 连麦 30 秒无响应后 UI 显示"申请超时"`
+
+apply skill 对旧格式做**尽力解析**并标注 `warning: legacy_verify_format`。**新建的 slice 必须使用结构化 yaml 格式**；存量 slice 在下一次实质性修改时顺手迁移。
 
 ##### 验证矩阵 [必填]
 
@@ -389,7 +517,8 @@ api_docs:                   # [必填] 该平台 API 参考文档链接（至少
 - [ ] 每段代码都有日志锚点，供「验证矩阵」层级 3 使用
 - [ ] `调用时序`：若涉及多角色异步交互或回调嵌套 ≥3 层，必须画；否则可省
 - [ ] `平台特有注意事项` 至少 1 条，且每条都是「该平台独有 + 不写出来研发会踩坑」
-- [ ] `代码生成约束` 的每条 MUST / MUST NOT 都附 `**Verify**:` 验证手段
+- [ ] `代码生成约束` 的每条 MUST / MUST NOT 都附 **结构化 `verify:` yaml 块**（见第四节「Verify 类型规范」）；存量旧格式的 `**Verify**: ...` 仅在存量 slice 上允许，新 slice 不得使用
+- [ ] 每条 `verify` 至少有一项 `type ∈ {grep, not_grep, compile, runtime_log}`（`manual` 不能单独存在，必须与至少一项可机检的 verify 搭配）
 - [ ] `代码生成约束` 的 MUST / MUST NOT 与产品级 ALWAYS / NEVER 不重复（前者管代码结构，后者管运行时行为）
 - [ ] `验证矩阵` 的 4 个层级都有至少 1 行
 - [ ] `验证矩阵` 覆盖了所有 MUST / MUST NOT 规则（每条规则都能在矩阵中找到对应行）

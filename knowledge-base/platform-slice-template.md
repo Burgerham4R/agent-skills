@@ -127,7 +127,8 @@ api_docs:                      # [必填] 该平台对应的 API 参考文档链
      — 代码生成约束 = 给 AI 读的可检查规则
 
      所有规则必须基于实际 SDK 行为，不允许凭经验推测。
-     ⚠️ 核心要求：每条 MUST / MUST NOT 必须自带 `**Verify**:` 验证手段，否则不合格。
+     ⚠️ 核心要求：每条 MUST / MUST NOT 必须自带**结构化 `verify:` yaml 块**，否则不合格。
+     verify 的完整字段规范见 slice-spec.md 第四节「Verify 类型规范」。
 -->
 
 ### 编译必要条件 [必填]
@@ -145,17 +146,24 @@ api_docs:                      # [必填] 该平台对应的 API 参考文档链
 
 #### MUST（生成时必须包含）
 
-<!-- 指引: 每条格式：编号 + 规则 + 违反后果 + Verify 手段
+<!-- 指引: 每条格式：编号 + 规则 + 违反后果 + 紧接着一段 ```yaml verify: ...``` 块
 
-     Verify 手段的 4 种类型（尽量用前 3 种，少用人工）：
-     — 静态扫描：`**Verify**: grep -E "\.sink\s*\{\s*\[weak self\]"`
-     — 编译错误：`**Verify**: 编译报错 "Cannot find 'XXX' in scope"`
-     — 运行时日志：`**Verify**: 运行时日志出现 "[CoGuest] 申请已发送..."`
-     — 人工：`**Verify**: 人工 — 30 秒后 UI 显示"申请超时"`
+     verify.type 的 5 种类型（尽量用前 4 种，少用 manual）：
+     — grep        静态正则匹配，需给 expect.op + value
+     — not_grep    静态禁用模式，命中必须为 0
+     — compile     跑平台编译，expect.exit_code（默认 0）
+     — runtime_log 触发 trigger 描述的操作后抓日志
+     — manual      无法机检，交人工；不能单独出现
 
-     示例：
+     示例（复制修改）：
      1. **所有 Combine sink 必须 `[weak self]`** — 不用会导致循环引用，ViewModel 永远不释放。
-        **Verify**: `grep -cE "\.sink\s*\{\s*\[weak self\]" == grep -cE "\.sink\s*\{"`
+        ```yaml
+        verify:
+          - type: grep
+            in: "Views/**/*.swift"
+            pattern: '\.sink\s*\{\s*\[weak self\]'
+            expect: { op: ">=", value: 1 }
+        ```
 
      只写本 slice 独有的规则。跨 slice 通用规则（如 [weak self]、主线程更新）
      如果在多个 slice 中反复出现，考虑提到产品级概览或 base-setup 中。
@@ -164,12 +172,17 @@ api_docs:                      # [必填] 该平台对应的 API 参考文档链
 
 #### MUST NOT（生成时绝不能出现）
 
-<!-- 指引: 同上格式，每条必须带 **Verify**: 。
+<!-- 指引: 同上格式，每条必须带结构化 verify yaml 块。
      重点写「看起来能跑但逻辑错误」的写法 — 这类问题编译器抓不到，只有了解业务语义才能避免。
 
      示例：
      1. **不要在 applyForSeat 成功回调中开设备** — .success 仅表示申请发出，不是主播同意。
-        **Verify**: `grep -B3 "openLocalCamera\|openLocalMicrophone" | grep -q "onGuestApplicationResponded"` 必须为真
+        ```yaml
+        verify:
+          - type: not_grep
+            in: "**/*.swift"
+            pattern: '\.success[^}]*openLocal(Camera|Microphone)'
+        ```
 -->
 
 ### 集成检查点 [必填]

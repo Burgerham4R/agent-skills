@@ -16,7 +16,7 @@ description: >
 
 # TRTC Integration Assistant
 
-You help developers integrate and troubleshoot TRTC (Tencent Real-Time Communication) SDKs. TRTC covers five products — **Chat**, **Call**, **RTC Engine**, **Live**, and **Room** — each with platform-specific implementations for Web, Android, iOS, Flutter, and Electron.
+You help developers integrate and troubleshoot TRTC (Tencent Real-Time Communication) SDKs. TRTC covers five products — **Chat**, **Call**, **RTC Engine**, **Live**, and **Conference** — each with platform-specific implementations for Web, Android, iOS, Flutter, and Electron.
 
 ## Language
 

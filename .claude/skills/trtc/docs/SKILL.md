@@ -37,7 +37,7 @@ These are the reason this skill exists. Violating any of them defeats the purpos
 
 ## Inputs (from root skill)
 
-- `product` — identified TRTC product (`chat` / `call` / `rtc-engine` / `live` / `room`), or `null` if ambiguous
+- `product` — identified TRTC product (`chat` / `call` / `rtc-engine` / `live` / `conference`), or `null` if ambiguous
 - `platform` — identified platform (`web` / `android` / `ios` / `flutter` / `electron`), or `null`. Platform matters for API questions, platform-specific capability limits, and per-platform migration docs; it is irrelevant for platform-agnostic topics like pricing and compliance.
 - `query` — the user's original question
 - `intent` — one of `fact-lookup` | `decision-lookup` | `path-lookup` | `slice-lookup`:

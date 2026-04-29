@@ -50,7 +50,7 @@ For each step in the scenario:
 
    - **G1: Copy from slices, don't improvise** — Always read the platform-specific slice file first and use its code examples as the foundation. Copy import statements, API signatures, and type annotations verbatim from the slice. Do NOT substitute SDK names or parameter types from memory.
    - **G2: No invented APIs** — Every class, method, property, and enum case you reference must either (a) come from the knowledge base slice, or (b) be standard platform API you're certain exists. When unsure, use a simpler but definitely-correct approach rather than guessing.
-   - **G3: Self-validate before presenting** — Before showing code, run through the verification pipeline defined in `apply/SKILL.md`. At minimum, execute the 5-point self-validation checklist. For code that will be written to the user's project, trigger the full apply pipeline (constraint compliance → compilation → integration safety).
+   - **G3: Self-validate before presenting** — Before showing or writing code, call `apply/SKILL.md` per the contract described in **"Calling apply"** below. Snippet-only answers can use `mode: quick` (5-point checklist). Code that will be written into the user's project MUST go through `mode: full` (constraint compliance → compilation → integration safety).
    - **G4: Modular structure** — Break implementations into separate files with clear single responsibilities. Don't put all logic into one massive file. Each file should be focused and manageable.
    - **G5: Compilable by default** — Generated code must be compilable when added to a project with the correct SDK installed. Include all necessary imports, type declarations, and protocol conformances. If something can't compile without additional context, note it with a `// TODO:` comment explaining what's needed.
 
@@ -88,23 +88,70 @@ If the user hits a problem mid-scenario:
 3. Walk through the diagnostic flow from the troubleshooting tree
 4. Once resolved, resume where you left off: "Great, that's fixed. Back to step N..."
 
-### Compilation verification loop
+### Calling apply (internal quality gate)
 
-When guiding a user through code implementation in interactive mode:
+apply is invoked per step, not per file and not per session. It follows the I/O contract defined in `apply/SKILL.md` Phase 0. Construct each call explicitly — do not dump raw code and hope apply infers context.
 
-1. After presenting code for a step, offer to verify compilation: "要我帮你验证编译吗？" (or equivalent in user's language)
-2. If the user agrees or if you're generating a complete project:
-   - Write the code files to the user's project
-   - Run the platform build command:
-     - iOS: `xcodebuild build -workspace ... -scheme ... -destination 'platform=iOS Simulator,...' -quiet`
-     - Android: `./gradlew assembleDebug`
-     - Web: `npm run build` or `npx tsc --noEmit`
-     - Flutter: `flutter build`
-   - If build succeeds → confirm "✅ 编译通过" and continue to next step
-   - If build fails → read error output, diagnose the issue, fix the code, rebuild (max 3 retries)
-   - After 3 failed retries → show the remaining errors and ask the user for help
+**Request construction** (build before calling apply):
 
-This is critical for delivering **0→1 可直接 build 运行的代码**. Each step's code should be a compilable increment.
+```yaml
+request:
+  code:
+    - path: {relative path under project root}
+      content: {full file content after this step's edits}
+    # include every file this step created or modified
+
+  product:     {scenario.product, e.g. live / conference / chat / call / rtc-engine}
+  platform:    {user's platform}
+  capability:  {slice_id of the current step, e.g. "live/coguest-apply"}
+
+  project_context:
+    root:              {absolute path if file scanning is available}
+    modified_files:    {paths touched by this step}
+    has_existing_tests: {true if the project has a test command configured, else false}
+
+  related_capabilities:
+    # list prerequisite slices so apply can verify cross-slice prerequisites
+    # without re-inferring from code
+    - {e.g. live/login-auth if this step needs login}
+    - {e.g. the slice immediately before this one in the scenario sequence}
+
+  mode: full | quick | static-only
+```
+
+**Mode selection rules:**
+
+| Situation | mode |
+|-----------|------|
+| Code will be written into the user's project (Step 3 compile gate) | `full` |
+| Snippet-only answer (user just wants to see code, not integrate it) | `quick` |
+| No project scanning / no build env available | `static-only` |
+
+**Response handling:**
+
+| response.status | What to do |
+|-----------------|------------|
+| `pass` | Mark the step as done. In the step summary, include the compile command + exit code from `response.compile_check` as proof. Do not expose raw constraint-check details unless the user asks. |
+| `partial` | Step done with non-blocking warnings. Note them in a single collapsed line, keep moving. Do NOT treat a `partial` with only `warning`/`info` severity as a blocker. |
+| `fail` | Step NOT done. Do not present the code as if it works. Follow `response.retry_hint.strategy` below. |
+
+**Acting on `retry_hint` when `status = fail`:**
+
+| retry_hint.strategy | Action |
+|---------------------|--------|
+| `patch` | Apply the specific fixes from `response.constraint_check.issues[*].fix.code_diff`, re-call apply **once** with the updated code. |
+| `regenerate` | Regenerate the step's code from scratch, guided by `retry_hint.focus_on`. Re-read the slice if needed (don't regenerate from memory). Call apply again. |
+| `give-up` | Stop retrying. Tell the user "I hit a snag on step N, here's what I tried: ..." — never "apply skill said X". Offer three options: skip this step, pause the scenario, or provide more context. |
+| `missing-field` | **Do NOT retry.** This signals the caller (topic skill itself) built a malformed request — typically forgot `capability`, `product`, or `platform`. The missing field names are listed in `retry_hint.focus_on`. Treat as a self-bug: tell the user "I hit an internal snag on step N" and offer to skip this step. Do not regenerate code — the code is not the problem. |
+
+**Retry budget:** at most **2 apply calls per step**. Matches apply's own compile retry budget (Phase 3.2). If the second call returns `fail` with the **same `failure_signature`** as the first, treat it as `give-up` even if `retry_hint` says otherwise — the second call has proven that the current patch/regenerate strategy isn't converging.
+
+**Planned-status slices:** if the current step references a slice with `status: planned`, apply's `capability` field still uses that slice id. apply will return `warning: slice_not_available` and fall back to compile-only verification. Topic skill should present the code with an extra note: "This step uses a slice still being documented — I verified it compiles, but the slice-level rules couldn't be checked."
+
+**Never:**
+- Never tell the user "I'm calling apply" or "apply says X". apply is silent infrastructure.
+- Never show raw `request` / `response` yaml. Translate to the step summary template.
+- Never skip apply to "move faster". A step without compile evidence is not a completed step.
 
 ### Adapting the pace
 

@@ -28,6 +28,110 @@ description: >
 
 ---
 
+## Phase 0: 调用接口契约
+
+本 skill 被上游 skill（onboarding / topic）**以结构化输入调用，以结构化输出返回**。上游和 apply 通过这份契约解耦：上游不必关心 apply 内部怎么跑，apply 也不必回过头猜上游的上下文。
+
+### 输入契约（上游 → apply）
+
+上游调用 apply 时必须提供以下结构：
+
+```yaml
+request:
+  # --- 必填 ---
+  code:                       # 要验证的代码（单文件或多文件）
+    - path: Views/MeetingView.swift       # 相对项目根的路径
+      content: |
+        import AtomicXCore
+        ...
+  product: live | call | chat | conference | rtc-engine
+  platform: ios | android | web | flutter | electron
+  capability: slice-id                    # 如 "live/coguest-apply"，必须是 index.yaml 中存在的 id
+
+  # --- 选填 ---
+  project_context:
+    root: /absolute/path/to/project       # 项目根（若提供，Phase 3 / Phase 4 会跑；否则自动降级为静态检查）
+    modified_files: [AppDelegate.swift]   # 上游声明本次改动涉及的文件
+    has_existing_tests: true | false      # 是否跑回归测试
+  related_capabilities:                   # 上游声明本次改动依赖哪些其他 slice（避免 apply 重新推断）
+    - live/login-auth
+    - live/device-control
+  mode: full | quick | static-only        # 默认 full；quick 用 5-point checklist；static-only 跳过 Phase 3/4
+```
+
+**约束**：
+- 缺 `product` / `platform` / `capability` 其一 → apply 返回 `status: fail` + `retry_hint.strategy: missing-field`，不做任何检查；`constraint_check / compile_check / integration_check` 全部标 `skipped`，`retry_hint.focus_on` 列出缺失字段名（如 `["capability"]`）。这不是代码质量问题，是上游调用契约违例，上游收到后应当**不做 retry、直接按 bug 上报**。
+- `capability` 对应 slice 不存在或 `status = planned` → apply 返回 `warning: slice_not_available`，降级为仅跑 Phase 3（若可编译）+ 5-point checklist
+- 没有 `project_context.root` → apply 自动降级为 `static-only`，不尝试执行 Phase 3 / Phase 4
+
+### 输出契约（apply → 上游）
+
+apply 始终返回以下结构：
+
+```yaml
+response:
+  status: pass | fail | partial            # 总体结论
+  summary: "通过 / 2 条 MUST 违反 / 编译未验证"
+
+  constraint_check:
+    status: pass | fail | skipped
+    issues:
+      - id: must-weak-self-in-sink         # 规则 id（见 Phase 2.X）
+        severity: critical | warning | info
+        rule_title: "sink 订阅必须加 [weak self]"
+        slice_id: live/coguest-apply
+        impact: "ViewController 无法释放，内存泄漏"
+        evidence:                          # 机器可读的证据；字段与 slice 的 verify 对齐
+          type: grep
+          in: "Views/**/*.swift"
+          pattern: '\.sink\s*\{\s*\[weak self\]'
+          command: "rg -c '\\.sink\\s*\\{\\s*\\[weak self\\]' Views/MeetingView.swift"
+          stdout_count: 2
+          expect: { op: ">=", value: 3 }   # 期望 ≥3（因为文件里有 3 处 .sink）
+          result: fail                     # 2 < 3
+        fix:
+          description: "补全剩余 1 处 sink 的 [weak self]"
+          code_diff: |
+            - .sink { value in
+            + .sink { [weak self] value in
+
+  compile_check:
+    status: pass | fail | skipped
+    command: "xcodebuild build ..."
+    exit_code: 0
+    stdout_tail: "...BUILD SUCCEEDED"
+    attempts: 1
+    failure_signature: null                # 编译失败时填（见 Phase 3.2）
+
+  integration_check:
+    status: pass | warn | fail | skipped
+    modified_files: [Views/MeetingView.swift, Stores/MeetingStore.swift]
+    unexpected_changes: []
+    conflicts: []
+    regression_tests: { ran: true, passed: 12, failed: 0 }
+
+  retry_hint:                              # 当 status = fail，告诉上游下一轮应该如何重生成
+    strategy: regenerate | patch | give-up | missing-field
+    focus_on: ["must-weak-self-in-sink", "import missing AtomicXCore"]
+    note: "2 次编译尝试都报同一错误，建议上游重新生成整段（不要局部 patch）"
+```
+
+### 交互模式
+
+| mode | 执行阶段 | 典型使用场景 |
+|------|---------|------------|
+| `full` | Phase 1~5 | 首次集成一整段代码时 |
+| `quick` | Phase 2 精简 + 5-point checklist | 小片段修改，片段不超过 50 行 |
+| `static-only` | Phase 2 + 报告，跳过 Phase 3/4 | 无项目环境，只能静态检查 |
+
+### 关键承诺（给上游）
+
+- apply **不修复代码之后替上游交付给用户**。编译失败时，apply 只给 `retry_hint` 让上游重新生成；除非 `mode = full` 并且问题是非常局部的单点修复（详见 Phase 3.2 的"有限自愈"条款），apply 不擅自改代码。
+- apply **任何返回都会附证据**。所有 `pass/fail` 都对应一条 `evidence`（命令+输出 或 规则+判定）。不带证据的结论不会出现在输出里。
+- apply **对未知 slice 诚实降级**，不假装验证。`slice_not_available` 时显式告知上游"只做了编译验证"。
+
+---
+
 ## Phase 1: 分析与识别
 
 ### 1.1 识别代码上下文
@@ -57,44 +161,93 @@ description: >
 
 ## Phase 2: 约束合规检查
 
-按照两层约束逐条检查代码：
+按照两层约束逐条检查代码。**规则的执行依据是 slice 内的 `verify` 结构化字段**（见下），而不是自由发挥。
+
+### 2.0 规则格式与消费方式
+
+slice 的 "代码生成约束" section 每条规则使用结构化格式，由 apply 解析后机器执行。规则结构见 `knowledge-base/slice-spec.md` 的 "Verify 类型规范"。下面是 apply 对每种类型的执行约定：
+
+| verify.type | apply 如何执行 | 判定成功条件 |
+|-------------|---------------|------------|
+| `grep` | 在 `verify.in`（默认 `**/*`，相对项目根）匹配 `pattern`，统计命中次数 | 命中次数满足 `verify.expect`（op + value） |
+| `not_grep` | 同上 | 命中次数 == 0 |
+| `compile` | 跑项目的平台编译命令（Phase 3 提供） | `exit_code == verify.expect.exit_code`（默认 0） |
+| `runtime_log` | 触发 `verify.trigger` 描述的操作后抓日志 | 日志包含 `verify.pattern`（按 `expect.op` 判定 contains/match） |
+| `manual` | 不执行；标记为 `needs_human_review` 放入输出 | — |
+
+### 兼容旧格式（过渡期）
+
+若 slice 仍用旧的 `**Verify**: <自由文本>` 写法，apply 按以下规则**尽力解析**，但会在输出里降级标注：
+
+| 旧文本特征 | 映射为 |
+|------------|-------|
+| 以 `grep` / `rg` 开头 | `type: grep`，pattern 从命令中提取 |
+| 含"编译报错" / "compile error" | `type: compile`，expected 0 |
+| 含"日志" / "log" | `type: runtime_log` |
+| 含"人工" / "manual" / "人检" | `type: manual` |
+| 无法识别 | 降级为 `type: manual`，在输出里加 `warning: legacy_verify_format` |
+
+**目标**：逐步让 slice 作者迁移到结构化 yaml。apply 不硬性要求，但旧格式在输出证据时无法提供 `command / stdout`，只能给出"人眼核对"级别的证据。
 
 ### 2.1 产品级规则（来自产品概览的最佳实践）
 
+产品级规则是**行为级**的 ALWAYS / NEVER，**通常不带 `verify` 字段**（因为它们描述"做什么"而非"代码怎么写"）。apply 对它们的处理：
+
 | 检查类型 | 做什么 |
 |----------|--------|
-| **ALWAYS 规则** | 逐条检查代码是否满足。缺失的 = issue |
-| **NEVER 规则** | 逐条检查代码是否违反。存在的 = issue |
+| **ALWAYS 规则** | 转译为一组静态查找词（来自规则描述里的关键 API 名），grep 代码是否出现预期的调用；找不到 → `warning`（不是 critical） |
+| **NEVER 规则** | 转译为禁用模式（如"不要在 .failure 里开设备"→ grep `.failure` 块内的 `openLocal*`），命中 → `issue` |
+
+> 产品级规则的机检精度天然不如平台级。**如果上游 skill 希望严格校验某条产品级 ALWAYS/NEVER，应当把它同步落到对应平台 slice 的 `verify` 字段里**，否则 apply 只能做"近似匹配"并加 `warning: loose_match` 标注。
 
 ### 2.2 平台级规则（来自平台文件的代码生成约束）
 
-| 检查类型 | 做什么 |
-|----------|--------|
-| **编译必要条件** | 验证 import 是否齐全、依赖是否声明 |
-| **MUST 规则** | 逐条检查。每条 MUST 未满足 = issue |
-| **MUST NOT 规则** | 逐条检查。每条 MUST NOT 被违反 = issue |
+平台级规则**每条必须带 `verify` 数组**（由 slice-spec.md 强制）。apply 的执行流程：
+
+```
+for rule in capability.platform_rules:
+  for v in rule.verify:
+    case v.type:
+      grep / not_grep → exec grep, 比对 expect
+      compile         → 记下来，留给 Phase 3 一次性跑
+      runtime_log     → 记下来，若 Phase 3 可编译则在运行时触发
+      manual          → 放入 response.constraint_check.manual_review
+  汇总该 rule 的所有 verify 结果：全 pass → rule 通过；任一 fail → issue
+```
+
+每条 issue 的 `evidence` 字段**必须包含实际执行的命令和输出**，不允许"凭感觉判定"。
 
 ### 2.3 跨 slice 检查
 
-**A. 前置状态验证**：
-读取每个 slice 平台文件的「前置条件 / 前置状态」，验证用户代码是否建立了这些前置条件。
+**A. 前置状态验证**
 
-> 例：代码调用了 `CoGuestStore.create(liveID:)` 但没有先完成 login → 加载 login 相关 slice，标记为 issue 并提供修复。
+读取每个 slice 平台文件的 `前置条件` section 并转译为 grep 规则。例：
 
-**B. 跨产品依赖**：
-检查 `index.yaml` 的 `cross_product_relations`。如果代码触及有跨产品依赖的能力（如弹幕依赖 Chat AVChatRoom），加载相关 slice 并检查其规则。
+- 前置："已完成 `LoginStore.shared.login()`"
+- 转译：`type: grep, pattern: "LoginStore\.shared\.login\(", expect: ">= 1"`
 
-**C. 平台生命周期验证**：
+找不到前置调用 → `issue: missing_prerequisite`，指向对应的前置 slice（如 `live/login-auth`）。
 
-| 平台 | 检查项 |
-|------|--------|
-| iOS | setup/subscribe 在 `viewDidLoad()` 或 `viewWillAppear()`；cleanup 在 `viewDidDisappear()`（不是 `deinit`）；Combine `sink` 必须 `[weak self]`；`cancellables` 必须是存储属性 |
-| Android | setup 在 `onCreate`/`onResume`；cleanup 在 `onPause`/`onDestroy`；lifecycle-aware 订阅管理 |
-| Web | 事件监听在组件卸载 / 页面 unload 时清理 |
-| Flutter | dispose() 中清理订阅；StatefulWidget 的 initState/dispose 对称性 |
+**B. 跨产品依赖**
 
-**D. 清理对称性**：
-对每一个 `create` / `subscribe` / `sink` 调用，验证是否有对应的清理操作，且清理在正确的生命周期方法中。
+检查 `index.yaml` 的 `cross_product_relations`。若本次 capability 在某个 relation 的 slices 列表中，**递归加载关联 slice 的 `verify` 字段**一起跑。
+
+**C. 平台生命周期验证**
+
+平台级的生命周期规则**应当由对应 slice 通过 `verify` 字段显式约束**。下表作为兜底参考——**当 slice 没有明确规则时**，apply 按下表跑一组 default check（仅当本次 capability 触及视图层时），产出 `warning` 级别而不是 `critical`：
+
+| 平台 | 默认生命周期兜底检查 |
+|------|--------------------|
+| iOS | `setup`/`subscribe` 应在 `viewDidLoad()` 或 `viewWillAppear()`；`cleanup` 应在 `viewDidDisappear()`（不是 `deinit`）；`sink` 必须 `[weak self]`；`cancellables` 必须是存储属性 |
+| Android | `setup` 应在 `onCreate` / `onResume`；`cleanup` 应在 `onPause` / `onDestroy`；lifecycle-aware 订阅管理 |
+| Web | 事件监听应在组件卸载 / 页面 unload 时清理 |
+| Flutter | `dispose()` 中清理订阅；`StatefulWidget` 的 `initState` / `dispose` 对称 |
+
+> **设计意图**：默认兜底表是"底线"。真正严格的约束应由 slice 的 `verify` 字段承担——这样规则可随 slice 迭代，而不是硬编码在 apply 里。
+
+**D. 清理对称性**
+
+对每一个 `create` / `subscribe` / `sink` 调用，grep 是否有对应的清理操作；若 slice 用 `verify` 显式声明了对称性规则（`type: grep` 配合 pattern 数量相等的 `expect`），以 slice 规则为准；否则用通用的对称性兜底 grep，产出 `warning`。
 
 ---
 
@@ -129,13 +282,49 @@ git stash list
 | Web | `npm run build` 或 `npx tsc --noEmit` |
 | Flutter | `flutter build` |
 
-3. 如果编译失败：
-   - 读取错误日志，定位问题
-   - 修复代码（不修改项目已有文件，除非问题在于集成点）
-   - 重试（最多 3 次）
-   - 3 次仍失败 → 展示剩余错误，标记 `⚠️ 编译未通过`
+3. **编译失败重试策略**（替代旧的"最多 3 次盲目重试"）：
 
-4. 编译成功 → 记录 `✅ 编译通过`，**附带实际的编译命令输出作为证据**
+   **上限 2 次。** 第二次仍失败则不再尝试，直接交由上游 skill 重新生成。
+
+   每次编译失败时记录**失败签名**（failure signature）：取编译错误日志中**前 5 条 error 行的 hash**（忽略文件路径里的行号/时间戳等噪声），作为本次失败的指纹。
+
+   | 决策点 | 动作 |
+   |-------|------|
+   | 第 1 次失败 | 分析错误日志 → 尝试**有限自愈**（见下方规则）→ 重试 |
+   | 第 2 次失败且**签名与第 1 次相同** | **立即退出**。不再尝试（同一错误反复出现说明自愈无效） |
+   | 第 2 次失败且签名不同 | 退出。不做第 3 次（避免越改越错） |
+
+   **有限自愈规则**（apply 允许的自动修复范围）：
+
+   | 允许自愈 | 不允许自愈 |
+   |---------|-----------|
+   | import 语句缺失或拼写错误 | 修改业务逻辑 |
+   | 明显的单符号类型错误（`Int` vs `Int32`） | 重写函数体 |
+   | 不修改项目已有文件的纯新增文件里的局部语法错误 | 修改项目已有文件 |
+   | 删除 apply 自己刚写入的冗余代码 | 合并 / 调整生命周期方法 |
+
+   超出自愈范围的错误 → **不自愈**，直接把错误和 `retry_hint` 返还上游。
+
+4. **退出时返还上游**的结构（填入 `response.compile_check`）：
+
+   ```yaml
+   compile_check:
+     status: fail
+     command: "xcodebuild build ..."
+     exit_code: 65
+     stdout_tail: "error: cannot find 'CoGuestStore' in scope ..."
+     attempts: 2
+     failure_signature: "a3f91c..."           # 用于上游判断"我上次也是这个错"
+
+   retry_hint:
+     strategy: regenerate                     # regenerate 重新生成整段 / patch 局部修正 / give-up
+     focus_on:
+       - "import AtomicXCore 缺失"
+       - "CoGuestStore.create 的第 2 个参数类型应该是 Int，不是 Int32"
+     note: "2 次尝试签名相同，建议上游重新生成（不要再局部 patch）"
+   ```
+
+5. 编译成功 → 记录 `✅ 编译通过`，**附带实际的编译命令输出作为证据**。
 
 ### 3.3 编译无法执行时
 

@@ -33,7 +33,7 @@ Maintain this block internally for the conversation. Do not display it verbatim 
 
 ```yaml
 session_context:
-  product: null            # chat | call | rtc-engine | live | room
+  product: null            # chat | call | rtc-engine | live | conference
   platform: null           # web | android | ios | flutter | electron
   intent: null             # demo | integrate-scenario | integrate-feature | troubleshoot | expand | explore
   scenario: null           # e.g. corporate-meeting | entertainment-live-room | online-classroom
@@ -70,7 +70,7 @@ Before asking anything, silently extract what you can from the user's first mess
 | Signal type | Pattern | Fills |
 |-------------|---------|-------|
 | Product keyword | "直播 / live streaming / broadcast" | `product = live` |
-|  | "会议 / meeting / conference / 多人视频" | `product = room` |
+|  | "会议 / meeting / conference / 多人视频" | `product = conference` |
 |  | "通话 / call / 1v1 video" | `product = call` |
 |  | "消息 / chat / IM / messaging" | `product = chat` |
 |  | "推流 / publish / 进房 / RTC engine" | `product = rtc-engine` |
@@ -88,20 +88,20 @@ Before asking anything, silently extract what you can from the user's first mess
 
 | 业务场景关键词 / Business scenario keyword | 映射产品 | 说明 |
 |---|---|---|
-| 远程医疗 / 在线问诊 / 医患沟通 / telemedicine / remote consultation | `room` | 多数是会议形态：医生+病人，可能多方 |
+| 远程医疗 / 在线问诊 / 医患沟通 / telemedicine / remote consultation | `conference` | 多数是会议形态：医生+病人，可能多方 |
 | 心理咨询 1v1 / 心理医生 / 心理辅导 / therapy session | `call` | 1v1 音视频沟通为主 |
-| 在线教育 / 网课 / 答疑 / 在线课堂 / online classroom / e-learning | `room` | 讲师 + 多学生，会议形态 |
-| 视频面试 / 远程面试 / video interview | `room` 或 `call`（看人数：2 人用 call，3+ 用 room） | 在 recap 里说明两种可能并让用户确认 |
+| 在线教育 / 网课 / 答疑 / 在线课堂 / online classroom / e-learning | `conference` | 讲师 + 多学生，会议形态 |
+| 视频面试 / 远程面试 / video interview | `conference` 或 `call`（看人数：2 人用 call，3+ 用 conference） | 在 recap 里说明两种可能并让用户确认 |
 | 视频客服 / 在线客服 / 金融视频客服 / video customer service | `call` | 一对一为主 |
 | 秀场直播 / 电商直播 / 带货 / 社交直播 / live commerce / showroom | `live` | 主播推流 + 观众观看 + 互动 |
 | 宣讲大会 / 大规模直播 / 发布会 / webcast | `live` | 大规模单向直播 |
-| 企业会议 / 部门例会 / corporate meeting | `room` | Conference 形态 |
-| 视频答辩 / 远程答辩 / 在线评审 | `room` | 多人参与 |
-| 研讨会 / webinar | `room`（中小规模） 或 `live`（300+ 大规模） | 规模决定 |
+| 企业会议 / 部门例会 / corporate meeting | `conference` | Conference 形态 |
+| 视频答辩 / 远程答辩 / 在线评审 | `conference` | 多人参与 |
+| 研讨会 / webinar | `conference`（中小规模） 或 `live`（300+ 大规模） | 规模决定 |
 | 直播内容审核 / 鉴黄 / 内容安全 | 边界：不在五产品核心，指向 docs + `live` | 这类问题答"内容安全是独立产品"并引向文档 |
 | 即时通讯 / IM / 消息系统 / 群聊 / messaging | `chat` | 显式 |
 | 呼叫中心 / 客服系统 | `call` + `chat`（路由） | 跨产品组合 |
-| 互动课堂 / 1v1 辅导 | `call`（1v1）或 `room`（小班） | 规模决定 |
+| 互动课堂 / 1v1 辅导 | `call`（1v1）或 `conference`（小班） | 规模决定 |
 
 **How to apply this table**: If the first message matches a row here and does NOT also explicitly name a TRTC product, treat `product` as inferred by this table. Mention the mapping in the recap (e.g. "Here's what I picked up: - Product: Room (from 远程医疗问诊)"). If the row lists two candidate products, do NOT pick one silently — present both in the recap and let the user confirm.
 
@@ -200,7 +200,7 @@ Question text: "您感兴趣的产品是哪个？" (English equivalent: "Which p
 | 1 | Chat — messaging, conversations, groups, IM | `product = chat` |
 | 2 | Call — 1v1 or small-group audio/video call | `product = call` |
 | 3 | Live — live streaming (broadcaster + audience, gifts, barrage, co-guest) | `product = live` |
-| 4 | Room — multi-person video conferencing / online classroom / webinar | `product = room` |
+| 4 | Conference — multi-person video conferencing / online classroom / webinar | `product = conference` |
 | 5 | RTC Engine — low-level real-time audio/video engine for custom scenarios | `product = rtc-engine` |
 | 6 | Type something | free-text |
 
@@ -323,7 +323,75 @@ Question text: "Demo is running. What's next?"
 
 ### Path A2 — Direct Integration
 
-**Your role: Co-developer.** You scan the project and write code that follows slice-defined best practices. Every code-writing step silently runs through `apply/SKILL.md` as an internal quality gate before being declared done — the user never opts into it, and it is never surfaced as a user-facing service. If apply reports issues, fix them and re-run silently; only surface the final result inline in the step's completion message.
+**Your role: Co-developer.** You scan the project and write code that follows slice-defined best practices. Every code-writing step silently runs through `apply/SKILL.md` as an internal quality gate before being declared done — the user never opts into it, and it is never surfaced as a user-facing service. See **"Calling apply"** below for the exact request/response contract.
+
+### Calling apply (internal quality gate)
+
+apply is invoked per step, not per file, and not per session. It follows the I/O contract defined in `apply/SKILL.md` Phase 0. Construct each call explicitly; do not dump raw code and hope apply infers context.
+
+**Request construction** (build this before calling apply):
+
+```yaml
+request:
+  code:
+    - path: {relative path under project root}
+      content: {full file content after this step's edits}
+    # include every file this step created or modified, not just the "main" one
+
+  product:     {session_context.product}
+  platform:    {session_context.platform}
+  capability:  {slice_id of the step just completed, e.g. "live/coguest-apply"}
+
+  project_context:
+    root:              {project root absolute path, if file scanning is available}
+    modified_files:    {list of paths touched by this step}
+    has_existing_tests: {true if the project has a test command configured, else false}
+
+  related_capabilities:
+    # include any prerequisite slices the current step depends on,
+    # so apply can verify cross-slice prerequisites without re-inferring
+    - {e.g. live/login-auth if this step depends on login}
+    - {e.g. live/device-control if this step opens camera/mic}
+
+  mode: full | quick | static-only
+    # full        → first integration of a full scenario step
+    # quick       → small edits (< 50 lines), single capability
+    # static-only → no project_context.root available
+```
+
+**Mode selection rules:**
+
+| Situation | mode |
+|-----------|------|
+| First implementation of a slice, full project available | `full` |
+| User asked for an adjustment in A2-Q3 option 3, edit is < 50 lines | `quick` |
+| No project scanning / no build env (user pasted snippet) | `static-only` |
+
+**Response handling:**
+
+After apply returns, read the structured `response` and branch as follows:
+
+| response.status | What to do |
+|-----------------|------------|
+| `pass` | Report the step done (see step summary template in A2-Q3). Show the compile command + exit code from `response.compile_check` as proof. Do not display constraint-check details unless the user asks. |
+| `partial` | Step done with non-blocking warnings. Show the warnings inline in the step report, in a single collapsed note. Do NOT block the user from moving to the next step unless a warning is a `critical` severity. |
+| `fail` | Step NOT done. Do not write the step summary. Follow `response.retry_hint.strategy`: see below. |
+
+**Acting on `retry_hint` when `status = fail`:**
+
+| retry_hint.strategy | What to do |
+|---------------------|------------|
+| `patch` | Apply the specific fixes listed in `response.constraint_check.issues[*].fix.code_diff`, write the updated files, re-call apply **once** with the same `capability` but updated `code`. |
+| `regenerate` | Re-generate the step's code from scratch, guided by `retry_hint.focus_on` (those are the things to fix on the re-gen). Call apply again with the new code. |
+| `give-up` | Stop retrying silently. Surface a message to the user framed as "I hit a snag on step N" — never "apply skill said X". Include what was tried (`attempts`, `failure_signature`) and ask the user whether to skip this step, pause, or provide more context. |
+| `missing-field` | **Do NOT retry.** This is a contract violation on the caller side (onboarding built a malformed request), not a code-quality problem. Log the missing field names from `retry_hint.focus_on` internally, then surface "I hit an internal snag on step N" to the user and offer to skip this step. Treat as a self-bug to report rather than a generation quality issue. |
+
+**Retry budget:** at most **2 apply calls per step**. This mirrors apply's own compile retry budget (Phase 3.2). If the second call still returns `fail` with the **same `failure_signature`** as the first, treat it as `give-up` regardless of what `retry_hint.strategy` says — the second call has proven that patch/regenerate isn't converging.
+
+**Never:**
+- Never tell the user "I'm calling apply" or "apply said X". apply is silent infrastructure.
+- Never show raw `request` / `response` yaml to the user. Translate to the step report template.
+- Never skip apply to "move faster". Compile evidence is the only acceptable proof that a step is done.
 
 > **Slice loading in this path goes via `search/SKILL.md` (internal).** When the flow below says "Load `knowledge-base/{scenario.file}`" or "Load the gift slice", delegate to the search sub-skill rather than reading files blindly. search handles: platform-specific file composition, `status: planned` fallback (offer alternatives), related-slice expansion when content is thin, and F1-F4 fallback chain. Users never see that search was involved — you compose the final answer with the slice content it returned.
 
@@ -340,7 +408,7 @@ Question text: "What kind of experience are you building?"
 
 Options are **product-dependent**. Pull the concrete scenario list from `knowledge-base/index.yaml` scenarios whose `product` matches the identified product. The sets below are reference — always cross-check against the current index.
 
-**If `product = room`:**
+**If `product = conference`:**
 
 | # | Option | Fills |
 |---|--------|-------|
@@ -399,15 +467,15 @@ Reuse A1-Q1 format. Skip entirely if `credentials.sdk_app_id` and `credentials.s
 
 #### A2-Q3 — Per-step confirmation
 
-After writing code for each step, silently run the step's output through `apply/SKILL.md` (constraint compliance → compilation → integration safety). This is an internal quality gate, never a user-facing option. Only summarize the outcome to the user as part of the step report:
+After writing code for each step, call `apply/SKILL.md` as described in **"Calling apply"** above. Only report the step done after `response.status` is `pass` (or `partial` with no `critical` severity issues). Summarize the outcome to the user using this template:
 
 ```
 Step {n} ({slice name}) done.
 Changes: {N files added, M files modified}. Did not touch {AppDelegate.swift / main.ts / etc.}.
-Compile check: passed.
+Compile check: passed — `{compile_command}` exit 0.
 ```
 
-If apply surfaces blocking issues, fix them before reporting "done" and re-run apply until it passes (max 3 attempts). Only if all 3 attempts fail do you surface the remaining issues to the user — framed as "I hit a snag on step N" rather than "apply skill said X".
+If apply returns `fail`, do NOT write this summary. Follow the retry rules in **"Calling apply → Acting on retry_hint"** (max 2 apply calls per step). If the step ultimately gives up, surface a message framed as "I hit a snag on step {n}" — never "apply skill said X" — and list what was tried.
 
 Question text: "What would you like to do next?"
 

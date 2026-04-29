@@ -18,7 +18,7 @@ You search the TRTC knowledge base to find relevant atomic capabilities (slices)
 
 ## Inputs (from root skill)
 
-- **product**: Identified product (chat/call/rtc-engine/live/room), or `null` if ambiguous
+- **product**: Identified product (chat/call/rtc-engine/live/conference), or `null` if ambiguous
 - **platform**: Identified platform (web/android/ios/flutter/electron), or `null`
 - **query**: The user's original question / keywords
 - **intent**: learn / troubleshoot / error-code
