@@ -1,0 +1,319 @@
+[
+  {
+    "test_id": "TC-LIVE-IOS-001",
+    "ability": "live/login-auth",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我正在用 Swift 开发一个 iOS 直播 App。帮我写一段完整的登录认证代码，需要初始化 SDK、设置 SDKAppID，并用 UserID 和 UserSig 完成登录。登录成功和失败都要有回调处理。",
+    "expected_slice_ids": ["live/login-auth"],
+    "constraints": {
+      "must_include": ["LoginStore.shared", "login(", "SDKAppID", "UserSig"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "V2TIMManager", "TUILogin"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onLoginSuccess", "onConnected"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["login"],
+    "tags": ["live", "ios", "smoke", "auth"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-002",
+    "ability": "live/device-control",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在做 iOS 直播 App（Swift），需要实现一个设备控制面板：包括打开/关闭摄像头、切换前后摄像头、打开/关闭麦克风。请给我完整代码。",
+    "expected_slice_ids": ["live/device-control"],
+    "constraints": {
+      "must_include": ["DeviceStore.shared", "openCamera", "closeMicrophone", "switchCamera"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "AVCaptureSession"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onCameraOpened", "onMicrophoneOpened"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["device_toggle"],
+    "tags": ["live", "ios", "smoke", "device"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-003",
+    "ability": "live/error-codes",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在 iOS 直播 App 里遇到各种错误码，帮我写一个统一的错误处理工具类（Swift），能把 SDK 返回的错误码翻译成用户友好的中文提示，并根据错误类型决定是否需要重试。",
+    "expected_slice_ids": ["live/error-codes"],
+    "constraints": {
+      "must_include": ["errorCode", "localizedDescription", "switch"],
+      "must_not_include": ["TRTCCloud.sharedInstance()"],
+      "file_count_min": 1
+    },
+    "expected_events": [],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.0, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.7, "w_dynamic_in_final": 0.3 },
+    "demo_injection_map": {},
+    "auto_run_flow": [],
+    "tags": ["live", "ios", "smoke", "error"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-004",
+    "ability": "live/anchor-preview",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我正在做一个 iOS 直播 App（Swift），现在需要实现主播开播前的预览页面。要求能显示摄像头画面预览、设置直播间 ID。请给出完整的 ViewController 代码。",
+    "expected_slice_ids": ["live/anchor-preview"],
+    "constraints": {
+      "must_include": ["LiveCoreView", "setLiveID", "startCamera"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "TUILiveRoom"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onCameraOpened", "onUserVideoStateChanged"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["anchor_preview"],
+    "tags": ["live", "ios", "smoke", "anchor"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-005",
+    "ability": "live/anchor-room-config",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在开发 iOS 直播 App（Swift），需要在开播前让主播设置房间名称和封面图。请帮我实现房间配置的逻辑代码，包括配置 MetaData 和参数校验。",
+    "expected_slice_ids": ["live/anchor-room-config"],
+    "constraints": {
+      "must_include": ["LiveListStore.shared", "roomName", "coverUrl", "MetaData"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "V2TIMManager"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onRoomConfigured"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["room_config"],
+    "tags": ["live", "ios", "smoke", "anchor"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-006",
+    "ability": "live/anchor-lifecycle",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在做一个 iOS 直播 App，用 Swift。帮我写一个完整的主播开播页面，要求：支持开播、显示观众数、点击退出按钮结束直播。",
+    "expected_slice_ids": ["live/anchor-lifecycle", "live/anchor-preview"],
+    "constraints": {
+      "must_include": ["LiveListStore.shared", "createLive", "endLive", "LiveCoreView"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "TUILiveRoom", "V2TIMManager"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onLiveStarted", "onUserVideoStateChanged", "onLiveEnded"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {
+      "AnchorView.swift": { "target_file": "MyApplication/Generated/AnchorView.swift", "replace_mode": "overwrite" }
+    },
+    "auto_run_flow": ["anchor_start_then_end"],
+    "tags": ["live", "ios", "smoke", "anchor"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-007",
+    "ability": "live/live-list",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在开发 iOS 直播 App（Swift），需要实现直播列表页面：能拉取当前所有在线直播间、支持分页加载、点击某个直播间可以进入观看。请给出完整代码。",
+    "expected_slice_ids": ["live/live-list"],
+    "constraints": {
+      "must_include": ["LiveListStore.shared", "fetchLiveList", "LiveInfo"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "V2TIMManager"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onLiveListFetched"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["fetch_live_list"],
+    "tags": ["live", "ios", "smoke", "audience"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-008",
+    "ability": "live/audience-watch",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在做 iOS 直播 App（Swift），需要实现观众进入直播间观看的功能。要求：能看到主播的视频画面、显示直播间信息、支持退出直播间。",
+    "expected_slice_ids": ["live/audience-watch"],
+    "constraints": {
+      "must_include": ["LiveCoreView", "joinLive", "leaveLive"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "TUILiveRoom"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onJoinedLive", "onUserVideoStateChanged"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["audience_join_leave"],
+    "tags": ["live", "ios", "smoke", "audience"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-009",
+    "ability": "live/audience-list",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在 iOS 直播 App（Swift）里需要展示观众列表和在线人数。请帮我实现一个观众列表组件，要求能实时更新观众人数、展示观众头像列表。",
+    "expected_slice_ids": ["live/audience-list"],
+    "constraints": {
+      "must_include": ["LiveAudienceStore", "audienceList", "audienceCount"],
+      "must_not_include": ["V2TIMManager", "TRTCCloud.sharedInstance()"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onAudienceListUpdated"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["audience_list_display"],
+    "tags": ["live", "ios", "smoke", "audience"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-010",
+    "ability": "live/barrage",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在开发 iOS 直播 App（Swift），需要实现弹幕功能：观众能发送文字弹幕，直播间里所有人能看到滚动弹幕。请给出完整的弹幕发送和展示代码。",
+    "expected_slice_ids": ["live/barrage"],
+    "constraints": {
+      "must_include": ["BarrageStore", "sendBarrage", "onBarrageReceived"],
+      "must_not_include": ["V2TIMManager.sharedInstance()", "TUIBarrage"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onBarrageSent", "onBarrageReceived"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["barrage_send"],
+    "tags": ["live", "ios", "smoke", "interactive"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-011",
+    "ability": "live/gift",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在做 iOS 直播 App（Swift），要实现送礼物功能：观众能选择礼物发送给主播，主播端能收到礼物通知并展示动画。请给出完整代码。",
+    "expected_slice_ids": ["live/gift"],
+    "constraints": {
+      "must_include": ["GiftStore", "sendGift", "onGiftReceived"],
+      "must_not_include": ["V2TIMManager", "TUIGift"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onGiftSent", "onGiftReceived"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["gift_send"],
+    "tags": ["live", "ios", "smoke", "interactive"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-012",
+    "ability": "live/audience-manage",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在 iOS 直播 App（Swift）里需要实现主播管理观众的功能：踢出违规用户、设置管理员。请帮我写完整的观众管理代码。",
+    "expected_slice_ids": ["live/audience-manage"],
+    "constraints": {
+      "must_include": ["LiveAudienceStore", "kickUser", "setAdministrator"],
+      "must_not_include": ["V2TIMManager", "TRTCCloud.sharedInstance()"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onUserKicked", "onAdministratorSet"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["audience_manage"],
+    "tags": ["live", "ios", "smoke", "manage"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-013",
+    "ability": "live/beauty",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在做 iOS 直播 App（Swift），需要给主播加上基础美颜功能：磨皮、美白、红润，用滑块控制强度。请帮我写完整代码。",
+    "expected_slice_ids": ["live/beauty"],
+    "constraints": {
+      "must_include": ["BaseBeautyStore", "setSmoothLevel", "setWhitenessLevel"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "TXBeautyManager"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onBeautyApplied"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["beauty_apply"],
+    "tags": ["live", "ios", "smoke", "beauty"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-014",
+    "ability": "live/audio",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在 iOS 直播 App（Swift）里想给主播加音效功能：能调节人声音量、开启耳返、切换变声效果和混响。请帮我实现。",
+    "expected_slice_ids": ["live/audio"],
+    "constraints": {
+      "must_include": ["AudioEffectStore", "setVoiceVolume", "enableEarMonitor", "setVoiceChanger"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "TXAudioEffectManager"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onAudioEffectApplied"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["audio_effect"],
+    "tags": ["live", "ios", "smoke", "audio"],
+    "status": "active"
+  },
+  {
+    "test_id": "TC-LIVE-IOS-015",
+    "ability": "live/coguest-apply",
+    "product": "live",
+    "platform": "ios",
+    "scenario": null,
+    "user_prompt": "我在 iOS 直播 App（Swift）里需要实现观众申请连麦功能：观众点击申请上麦、主播审批通过后观众开始推流连麦、支持断开连麦。请给完整代码。",
+    "expected_slice_ids": ["live/coguest-apply"],
+    "constraints": {
+      "must_include": ["CoGuestStore", "applyToConnect", "onCoGuestApproved", "disconnectCoGuest"],
+      "must_not_include": ["TRTCCloud.sharedInstance()", "TUILiveRoom"],
+      "file_count_min": 1
+    },
+    "expected_events": ["onCoGuestApplied", "onCoGuestApproved", "onCoGuestConnected"],
+    "acceptance": { "static_score_min": 0.7, "dynamic_score_min": 0.5, "must_compile": true },
+    "weights": { "w_must_include": 0.6, "w_must_not": 0.4, "w_events": 0.7, "w_compile_bonus": 0.3, "w_static_in_final": 0.4, "w_dynamic_in_final": 0.6 },
+    "demo_injection_map": {},
+    "auto_run_flow": ["coguest_apply"],
+    "tags": ["live", "ios", "smoke", "coguest"],
+    "status": "active"
+  }
+]

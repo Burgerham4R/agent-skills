@@ -21,6 +21,10 @@ pod 'AtomicXCore', '~> 4.0'
 ## API 调用（真实签名）
 
 ```swift
+// LiveCoreView 初始化：参数名是 viewType（不是 liveScene）
+// CoreViewType 枚举：.pushView（推流/主播端）、.playView（拉流/观众端）
+LiveCoreView(viewType: CoreViewType, frame: CGRect = .zero)
+
 // 开播：第一参数无标签；completion 返回 LiveInfo
 LiveListStore.shared.createLive(_ liveInfo: LiveInfo,
                                 completion: LiveInfoCompletionClosure?)
@@ -277,3 +281,33 @@ override func viewWillDisappear(_ animated: Bool) {
     }
 }
 ```
+
+### 7. LiveCoreView 初始化参数名是 `viewType`（不是 `liveScene`）
+`LiveCoreView` 的初始化方法参数名为 `viewType`，类型为 `CoreViewType` 枚举（`.pushView` 推流 / `.playView` 拉流）：
+```swift
+// ✅ 正确：参数名是 viewType
+let liveCoreView = LiveCoreView(viewType: .pushView)
+
+// ❌ 错误：没有 liveScene 参数
+let liveCoreView = LiveCoreView(liveScene: .pushView)
+```
+
+### 8. StatePublisher 读取属性必须通过 `.value`
+所有 Store 的 `.state` 属性类型是 `StatePublisher<T>`，不是 `T` 本身。读取当前状态值必须通过 `.value`：
+```swift
+// ✅ 正确：通过 .value 访问 state 属性
+let count = audienceStore?.state.value.audienceCount ?? 0
+
+// ❌ 错误：StatePublisher 上没有 audienceCount 成员
+let count = audienceStore?.state.audienceCount ?? 0
+```
+同理适用于所有 StatePublisher 包装的状态结构体：`LiveListState`、`DeviceState`、`BarrageState` 等。
+
+### 9. MUST: 文件头必须 `import AtomicXCore`
+使用 LiveCoreView、LiveListStore、DeviceStore、LiveAudienceStore 等类型时，必须在文件顶部显式 import：
+```swift
+import UIKit
+import AtomicXCore   // ← 必须，否则编译报 "cannot find type 'XXX' in scope"
+import Combine       // 如果使用 Publisher/AnyCancellable
+```
+不要将 import 写在注释中，必须是真正的 import 语句。

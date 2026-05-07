@@ -27,6 +27,13 @@ pod 'AtomicXCore', '~> 4.0'
 ## API 调用（真实签名）
 
 ```swift
+// LiveCoreView 初始化：主播端用 .pushView（推流模式）
+// ⚠️ 参数名是 viewType（不是 liveScene）
+LiveCoreView(viewType: .pushView, frame: CGRect = .zero)
+
+// 绑定直播间 ID（创建后必须立即调用，否则黑屏）
+liveCoreView.setLiveID(_ liveID: String)
+
 // 1. 打开前/后置摄像头（含 completion 回调）
 DeviceStore.shared.openLocalCamera(isFront: Bool, completion: CompletionClosure?)
 // CompletionClosure = (Result<Void, ErrorInfo>) -> Void

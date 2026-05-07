@@ -21,6 +21,10 @@ pod 'AtomicXCore', '~> 4.0'
 ## API 调用（真实签名）
 
 ```swift
+// LiveCoreView 初始化：观众端用 .playView（拉流模式）
+// 参数名是 viewType（不是 liveScene）
+LiveCoreView(viewType: .playView, frame: CGRect = .zero)
+
 // 加入直播间并开始拉流
 // ⚠️ completion 返回 LiveInfo（不是 Void）
 LiveListStore.shared.joinLive(liveID: String,

@@ -1,1 +1,30 @@
-test-use/
+# TRTC AI Integration - Eval Tool
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Eval runs (never commit — may contain PII in logs)
+.claude/eval-runs/
+
+# Template cache (cloned by bootstrap.sh)
+.cache/
+templates/ios-demo/
+templates/android-demo/
+templates/web-demo/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Env files
+.env
+.env.local
+.env.*.local

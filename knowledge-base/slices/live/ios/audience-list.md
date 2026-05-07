@@ -57,6 +57,12 @@ audienceStore.state  // StatePublisher<LiveAudienceState>
 | `.onAudienceJoined(audience: LiveUserInfo)` | 有观众进入直播间 |
 | `.onAudienceLeft(audience: LiveUserInfo)` | 有观众离开直播间 |
 | `.onAudienceMessageDisabled(audience: LiveUserInfo, isDisable: Bool)` | 某观众禁言状态变更 |
+| `.onOwnerJoined(owner: LiveUserInfo)` | 房主进入直播间（4.1.0+） |
+| `.onOwnerLeft(owner: LiveUserInfo)` | 房主离开直播间（4.1.0+） |
+| `.onAdminJoined(admin: LiveUserInfo)` | 管理员进入直播间（4.1.0+） |
+| `.onAdminLeft(admin: LiveUserInfo)` | 管理员离开直播间（4.1.0+） |
+
+> **MUST**: switch LiveAudienceEvent 时必须添加 `default` 分支，因为枚举可能在后续版本继续扩展。
 
 ## 代码示例
 
@@ -118,6 +124,8 @@ final class AudienceListViewModel {
                 case .onAudienceMessageDisabled(let audience, let isDisable):
                     // 禁言状态变更，可在此刷新 UI 标记
                     print("[AudienceList] 用户 \(audience.userID) 禁言状态变更: \(isDisable)")
+                default:
+                    break  // 兼容 4.1.0+ 新增 case（onOwnerJoined/Left, onAdminJoined/Left）
                 }
             }
             .store(in: &cancellables)
@@ -131,9 +139,9 @@ final class AudienceListViewModel {
                 guard let self = self else { return }
                 switch result {
                 case .success:
-                    // 从 state 中取最新快照
-                    self.audienceList = self.audienceStore?.state.audienceList ?? []
-                    self.audienceCount = self.audienceStore?.state.audienceCount ?? 0
+                    // 从 state.value 中取最新快照（state 是 StatePublisher，必须通过 .value 访问）
+                    self.audienceList = self.audienceStore?.state.value.audienceList ?? []
+                    self.audienceCount = self.audienceStore?.state.value.audienceCount ?? 0
                     self.onListUpdated?()
                     self.onCountUpdated?(self.audienceCount)
                 case .failure(let error):
@@ -149,14 +157,14 @@ final class AudienceListViewModel {
         // 避免重复插入
         guard !audienceList.contains(where: { $0.userID == audience.userID }) else { return }
         audienceList.insert(audience, at: 0)   // 新观众插入列表头部
-        audienceCount = audienceStore?.state.audienceCount ?? audienceCount + 1
+        audienceCount = audienceStore?.state.value.audienceCount ?? audienceCount + 1
         onListUpdated?()
         onCountUpdated?(audienceCount)
     }
 
     private func handleAudienceLeft(_ audience: LiveUserInfo) {
         audienceList.removeAll { $0.userID == audience.userID }
-        audienceCount = audienceStore?.state.audienceCount ?? (audienceCount > 0 ? audienceCount - 1 : 0)
+        audienceCount = audienceStore?.state.value.audienceCount ?? (audienceCount > 0 ? audienceCount - 1 : 0)
         onListUpdated?()
         onCountUpdated?(audienceCount)
     }
