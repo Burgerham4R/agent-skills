@@ -105,8 +105,7 @@ Options are **product-dependent**. Pull the concrete scenario list from `knowled
 | 1 | Webinar / large-audience seminar | `scenario = webinar-large` |
 | 2 | Online education / classroom | `scenario = online-classroom` |
 | 3 | Telemedicine / remote consultation | `scenario = telemedicine` |
-| 4 | Corporate / internal team meeting | `scenario = corporate-meeting` |
-| 5 | I want to pick individual features myself | fall through to A2-Q1 |
+| 4 | General meeting / 常规会议 (generic, no specialized format) | `scenario = general-meeting` || 5 | I want to pick individual features myself | fall through to A2-Q1 |
 | 6 | Type something | free-text |
 
 **If `product = live`:**
@@ -117,6 +116,33 @@ Options are **product-dependent**. Pull the concrete scenario list from `knowled
 | 2 | E-commerce live streaming | `scenario = ecommerce-live` |
 | 3 | I want to pick individual features myself | fall through to A2-Q1 |
 | 4 | Type something | free-text |
+
+## A2-Q0.5 — UI generation mode (conference scenarios only)
+
+**Trigger**: the user picked one of the 4 conference scenarios in A2-Q0
+(`general-meeting` / `online-classroom` / `telemedicine` / `webinar-large`).
+Skip for all other products and for the A2-Q1 fall-through branch.
+
+**Purpose**: decide how topic will generate code — as a fused Vue SFC that
+includes UI, or as headless composables where the user supplies their own UI.
+Ask BEFORE handing off to topic, so topic reads `ui_mode` from the session
+file at skill entry.
+
+**Question text** (translate to user's language at runtime):
+
+> How do you want the code to be generated?
+
+| # | Option | Fills | Next |
+|---|--------|-------|------|
+| 1 | Business code + full UI (recommended: AI generates a fused Vue SFC — template, AtomicXCore bindings, and styles — using the {scenario} UI template as visual reference; runs out of the box) | `ui_mode = full-ui` | hand off to topic with full-ui spec |
+| 2 | Business logic only (headless composables / stores / types; you write your own UI — good for projects that already have a design system) | `ui_mode = headless` | hand off to topic with headless spec |
+| 3 | Type something | free-text | re-infer |
+
+Persist `ui_mode` to `.trtc-session.yaml`. Piggyback on the Stage 1 confirmed
+write — do NOT trigger an extra Write just for this field.
+
+**Telemedicine default**: maps to room-builder's `one-on-one` scene. Multi-party
+consultation is out of scope for this release (see pending_todos).
 
 When a scenario is chosen:
 
@@ -197,26 +223,97 @@ Question text: "Integration finished. What's next?"
 | # | Option | Action |
 |---|--------|--------|
 | 1 | Add another feature | loop back to A2-Q1 (as single-feature mode); session `status` stays `active` |
-| 2 | Tweak the UI | go to A2-Q4-UI (below); session `status` stays `active` |
+| 2 | Fine-tune the UI (theme / layout) | go to A2-Q4-UI (controlled-adjustment sub-flow); session `status` stays `active` |
 | 3 | I'm good for now | set `status: completed`, Write session, end onboarding cleanly |
 | 4 | Type something | free-text |
 
-### A2-Q4-UI — UI customization sub-flow
+Option 2 is only shown when `product = conference` AND `ui_mode = full-ui`.
+Headless integrations have no generated UI for onboarding to fine-tune —
+the user edits their own UI directly. For any other product / mode, hide
+option 2 entirely.
 
-Question text: "Which aspect of the UI do you want to adjust?"
+### A2-Q4-UI — Controlled UI adjustment sub-flow
 
-| # | Option | Example change |
-|---|--------|----------------|
-| 1 | Brand color (primary accent) | example: `#FF6B6B` (coral) instead of the default blue |
-| 2 | Font family / size | example: switch to `"PingFang SC"`, body text from 14pt to 16pt |
-| 3 | Corner radius (buttons, cards) | example: `12px` for a softer look, `0` for sharp edges |
-| 4 | Dark or light mode | example: force dark mode, or follow system preference |
-| 5 | Custom color for a specific element — tell me which | free-text, format `{element}: {color}` (e.g., "send button: #4ECDC4") |
-| 6 | Type something | free-text |
+**Triggered when**: A2-Q4 option 2. Runs AFTER a full integration has passed
+apply and `ui_mode = full-ui`. Intent: let users fine-tune the UI without
+breaking the business logic or SDK contract.
 
-Apply rules:
+**Core principle**: every adjustment belongs to a declared *class* with
+explicit scope and forbidden operations. No free-form UI editing — the user
+picks a class, AI operates within that class's boundaries.
 
-- **Scope is UI layer only.** Modify theme tokens / stylesheets / component styling. Do NOT change SDK calls, store logic, event handlers, or data flow. This preserves the integration that passed the internal compile gate.
-- For option 5 (custom color), parse the element name and map it to the nearest semantic token in the generated code. If ambiguous, show the user 2-3 candidate matches and let them pick.
-- Store choices in `ui_preferences` in the session file so subsequent feature additions (via A2-Q4 option 1) reuse them automatically. This write piggybacks on the next Checkpoint (e.g. the next successful A2-Q3 step or A2-Q4 completion); don't trigger an extra Write just for UI tweaks.
-- After each change, ask: "Apply and continue, or adjust more?" — re-show A2-Q4-UI options if the user wants more, otherwise return to A2-Q4.
+Question text: "What aspect do you want to adjust?"
+
+| # | Class | Scope | Risk |
+|---|---|---|---|
+| 1 | Theme tokens | `overrides.css` only (brand color, radius, font, dark mode) | Low |
+| 2 | Layout | `layout.css` only (panel / toolbar positions) | Medium |
+| 3 | I need something else | Free-text; AI classifies and re-routes, or declines if it doesn't fit class 1 / 2 | — |
+| 4 | Done | Return to A2-Q4 | — |
+
+Replacing a single generated element with a user-provided component is
+deliberately NOT offered in this release — see pending_todos for the plan.
+
+#### Class 1: Theme tokens (safe path)
+
+**Allowed**:
+- Run `room-builder/uikit/scripts/generate-theme-overrides.py` with user-specified flags
+- Create or update `overrides.css` in the user's project
+
+**Forbidden**:
+- Editing any `.vue` file
+- Editing `uikit/components/*.css`
+- Adding inline `style` attributes in generated code
+
+**Flow**: ask the user which tokens to change (primary color / radius scale /
+font family / dark mode). Compose the script invocation, run it, report the
+diff of `overrides.css`. Call apply with `mode: quick`. Fail the adjustment
+if apply detects any `.vue` file changed or any hardcoded color appears in
+the diff.
+
+**After success**: set `ui_customizations.theme_overridden = true`. Persist
+at the next checkpoint write.
+
+#### Class 2: Layout (medium path)
+
+**Allowed**:
+- Modifying `layout.css` (grid-area, side-panel position, toolbar slot positions)
+- Renaming slot positions in the template, as long as the slot name is preserved
+
+**Forbidden**:
+- Changing any class name in `<template>` except grid-area classes
+- Removing or modifying any node with `v-for` / `@click` / `:class` / `v-model`
+- Editing `<script setup>`
+- Changing `import` statements
+
+**Flow**: ask the user the layout change (e.g. "move members panel to the left",
+"put toolbar at the top"). Generate the edits to `layout.css`. Call apply with
+`mode: full`. Required diff checks:
+1. All original `v-*` directives and event bindings must be preserved
+2. All composable imports must be unchanged
+3. Any diff that modifies a reactive binding → rejected with a clear explanation
+   ("layout adjustment cannot change business bindings; if you want to replace
+   an element, that requires a different flow that is not available yet.")
+
+**After success**: set `ui_customizations.layout_modified = true`. Persist
+at the next checkpoint write.
+
+#### Class 3: Free-text fallback
+
+When the user picks option 3 or free-texts a request:
+- Matches class 1 intent (colors / radius / font / dark mode) → route to class 1
+- Matches class 2 intent (panel position / layout) → route to class 2
+- Requests replacing an element with a custom component → decline with: "Custom
+  component replacement is not available in this release — it requires additional
+  safety checks for RTC mount points and reactive bindings that we're still
+  building. You can manually edit the files if needed; the generated code is
+  under `src/trtc/views/` and the composables are under `src/trtc/composables/`."
+- Any other request → decline politely, restate classes 1 and 2.
+
+Never perform free-form UI edits. The two classes above are the only sanctioned
+operations.
+
+#### Loop
+
+After each successful adjustment, ask: "Apply and continue, or adjust more?" —
+re-show A2-Q4-UI options if the user wants more, otherwise return to A2-Q4.

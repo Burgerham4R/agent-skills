@@ -68,6 +68,43 @@ For each step in the scenario:
 4. **Highlight the gotchas** — surface the ALWAYS/NEVER rules that apply to this step. Frame them as "the common mistakes I've seen" rather than abstract rules.
 5. **Pause and check in** — ask the user if this step is clear, if they've implemented it, or if they have questions. Don't rush ahead.
 
+### Step 3.5: Apply `ui_mode` to code generation (conference only)
+
+When `.trtc-session.yaml` has `product = conference` and `ui_mode` is set, the
+code-generation strategy branches. Read this state ONCE at skill entry and cache
+it for the whole session.
+
+**At skill entry, if `ui_mode = full-ui`, load these three files as spec input:**
+
+1. `.claude/skills/trtc/room-builder/references/scenario-mapping.md` — maps the
+   current scenario to a Standard scene and a reference HTML file
+2. `.claude/skills/trtc/room-builder/references/composable-bindings.md` — maps
+   UIKit class names to AtomicXCore composables and reactive Vue bindings
+3. The reference HTML file named in scenario-mapping.md — used as visual spec
+   (structure, class names, slot layout)
+
+**Generation rules by mode:**
+
+| `ui_mode` | Output shape | Strategy |
+|---|---|---|
+| `full-ui` | Vue SFC (template + script + style) | Mirror the reference HTML structure in `<template>`. Class names MUST come from `uikit/references/component-catalog.md` — do NOT invent new class names. Replace static state classes (`.is-off`, `.is-open`) with reactive `:class` bindings per composable-bindings.md. Wire buttons with `@click` and lists with `v-for` against the mapped composables. In `<style>`, import `uikit/assets/themes/meeting-classic/` tokens and component CSS. |
+| `headless` | Composables + stores + types + README | Generate `src/trtc/composables/*.ts`, `src/trtc/types/index.ts`, and a top-level `README.md`. Do NOT generate any `.vue` files. Do NOT generate example components. The README documents each composable's return signature with a 3-line usage snippet. |
+| `null` or unset | Topic's default strategy | Fall back to the per-slice code-example approach (pre-ui_mode behavior). Unchanged. |
+
+**Internal asset policy:** `scenario-mapping.md` and `composable-bindings.md`
+are read-only references. Topic does not write to room-builder. The user never
+sees these files — they are internal generation spec.
+
+**Respecting user UI customizations**: also read `ui_customizations` from the
+session. If `layout_modified = true`, do not regenerate `layout.css` in
+subsequent feature additions. If `theme_overridden = true`, do not regenerate
+`overrides.css`. Preserve what the user has manually tuned.
+
+**Fallback when `ui_mode = full-ui` has no mapping entry for the current
+scenario:** degrade to `ui_mode = null` behavior for this run and warn the
+user (in their language): "I don't have a UI template for this scenario yet —
+I'll generate business code and you can apply your own UI layer."
+
 The scenario file may reference slices with `status: planned`. When you hit one of these:
 - Explain what this step conceptually does (from the index description)
 - Give your best guidance based on the scenario file's description of the step
