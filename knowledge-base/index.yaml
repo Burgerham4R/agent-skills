@@ -350,6 +350,27 @@ scenarios:
     description: 两个用户进行 1v1 视频通话的完整流程
     status: planned
 
+  - id: general-meeting
+    name: 通用会议
+    slices:
+      # 第一优先级主命中（默认会议主链路）
+      - conference/login-auth
+      - conference/room-lifecycle
+      - conference/participant-list
+      - conference/video-layout
+      - conference/device-control
+      - conference/network-quality
+      # 第二优先级常见增强
+      - conference/prejoin-check
+      - conference/room-config
+      - conference/participant-management
+      - conference/room-moderation
+      - conference/room-chat
+      - conference/screen-share
+    file: scenarios/general-meeting.md
+    description: 多人实时音视频会议默认主链路：登录 → 房间生命周期 → 参会人 → 视频布局 → 设备/网络 → 会中协作。当用户描述未命中教育/医疗/webinar 等上层行业场景时，统一回落到此场景。
+    status: active
+
   - id: entertainment-live-room
     name: 秀场直播间
     slices:

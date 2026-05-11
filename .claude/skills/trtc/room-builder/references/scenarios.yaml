@@ -1,0 +1,43 @@
+# Source of truth for scenario → UI template/theme mapping.
+# DO NOT edit scenario-mapping.md directly — it is rendered from this file.
+# See MAINTAINING-SCENARIOS.md for how to add a new themed scenario.
+
+version: 1
+scenarios:
+  - id: general-meeting
+    path: general-meeting/
+    template: meeting-classic
+    reference_html: meeting-classic/index.html
+    notes: ""
+    theme:
+      slug: meeting-classic
+      source_dir: .claude/skills/trtc/room-builder/uikit/assets/themes/meeting-classic
+      data_theme: mc
+      import_path: "@/themes/meeting-classic/index.css"
+      target_dir: src/themes/meeting-classic
+
+  - id: webinar-large
+    path: webinar-large/
+    template: meeting-classic
+    reference_html: meeting-classic/index.html
+    notes: "Large-audience layout reuses meeting-classic for 0→1 scaffold."
+    theme:
+      slug: meeting-classic
+      source_dir: .claude/skills/trtc/room-builder/uikit/assets/themes/meeting-classic
+      data_theme: mc
+      import_path: "@/themes/meeting-classic/index.css"
+      target_dir: src/themes/meeting-classic
+
+  - id: online-classroom
+    path: online-classroom/
+    template: ~
+    reference_html: ~
+    notes: "TODO: add reference HTML and theme block."
+    theme: ~
+
+  - id: telemedicine
+    path: telemedicine/
+    template: ~
+    reference_html: ~
+    notes: "TODO: add reference HTML and theme block."
+    theme: ~

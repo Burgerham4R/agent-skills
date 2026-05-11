@@ -31,3 +31,6 @@ build/
 
 # Skill-level config (contains real TRTC test credentials; example is checked in)
 .claude/skills/trtc-eval/config.json
+
+# TRTC onboarding session state
+.trtc-session.yaml

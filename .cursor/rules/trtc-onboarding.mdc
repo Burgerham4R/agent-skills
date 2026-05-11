@@ -1,13 +1,6 @@
 ---
-name: trtc-onboarding
-description: >
-  Guides developers through hands-on TRTC integration from first setup to
-  working code. Use when the user expresses intent to integrate, build, add
-  a feature, or run a demo (e.g. "get started", "帮我接入", "从零开始",
-  "I want to add X", "implement X", "try the demo"); or troubleshoot an
-  issue ("报错", "crash", "not working", "黑屏"); or when the project has
-  no TRTC dependencies detected. Provides demo quickstart, scenario
-  integration, single-feature integration, and error diagnosis.
+description: "Guides developers through hands-on TRTC integration from first setup to working code. Use when the user expresses intent to integrate, build, add a feature, or run a demo (e.g. 'get started', '帮我接入', '从零开始', 'I want to add X', 'implement X', 'try the demo'); or troubleshoot an issue ('报错', 'crash', 'not working', '黑屏'); or when the project has no TRTC dependencies detected. Provides demo quickstart, scenario integration, single-feature integration, and error diagnosis."
+alwaysApply: false
 ---
 
 # TRTC Onboarding
@@ -25,7 +18,7 @@ Always respond in the same language as the user's message. If uncertain, default
 These rules apply to every question you ask in this skill.
 
 1. **No emoji in question prompts.** Keep questions plain text. Emoji is fine in content / recap sections, not in selection prompts.
-2. **Every question uses structured selection.** Use `AskUserQuestion` if available. Fall back to a numbered list otherwise. The last option is always `Type something` (free-text).
+2. **Every question uses structured selection.** Use a numbered list. The last option is always `Type something` (free-text).
 3. **Inferred facts are never asked as yes/no.** If you inferred the platform from a `Podfile`, do not ask "Is it iOS?" — state it in the recap and move on. Only ask when genuinely unknown.
 4. **Already-answered questions are never re-asked.** Consult `.trtc-session.yaml` (below) before every question. Skip any question whose answer is already filled.
 5. **Recap on transitions.** When moving between stages or paths, open the reply with a one-sentence recap of what you already know, then the next action or question.
@@ -45,7 +38,7 @@ Persist the full current state back to `.trtc-session.yaml` at these moments onl
 
 | Checkpoint | What changes |
 |-----------|--------------|
-| Stage 0 inference complete | Create file silently; set `status: active`, fill all inferred fields. Do NOT wait for user confirmation — write immediately after inference. |
+| Stage 1 calibration confirmed (user approved the recap) | Create file; set `status: active`, fill all inferred fields |
 | A2-Q3 step passes apply | Advance `current_step`; append slice to `completed_steps` |
 | User says "pause / 先到这里 / 明天再来" | Set `status: paused` |
 | A2-Q4 "I'm good for now" | Set `status: completed` |
@@ -53,19 +46,11 @@ Persist the full current state back to `.trtc-session.yaml` at these moments onl
 
 **Sensitive values**: credentials (SDKAppID / SecretKey) are NEVER written to disk. Only booleans `credentials.sdk_app_id_provided` and `credentials.secret_key_provided` are persisted. The actual values live only in the conversation context.
 
-**Silence rule for Write (CRITICAL)**: a "silent" Write means the user must NOT see any chat-side output announcing it. The ONLY allowed user-visible output tied to a session-file Write is the one-sentence `.gitignore` notice described below — and only on the first Write that actually appended the line. All of the following are FORBIDDEN as user-visible output around a session-file Write:
-
-- "I created `.trtc-session.yaml` / Session state saved / 已保存会话状态 / 已写入 session 文件" — any phrasing that announces the file write itself.
-- Echoing back the inferred fields ("Product: Conference, Platform: Web, Intent: …") *as confirmation that they were written*. Inferred fields belong in the Stage-1 recap (a separate, conversational artifact), not here.
-- Diffs, paths, or file-tool result summaries surfaced to the user.
-
-If the Write tool surfaces output by itself, suppress / don't reference it in your reply. The mental model is "the file appeared; nothing was said." Stage-1 recap may then still happen — those are different turns and a different artifact.
-
 **First Write — `.gitignore` handling**: on the first Write, also check whether `.gitignore` exists in the project root. If it exists and does not already contain `.trtc-session.yaml`, append that line. Tell the user in one sentence: "I've added `.trtc-session.yaml` to `.gitignore` so the session won't be committed." (Translate to user's language.) If no `.gitignore` exists, do not create one — just proceed.
 
-### On reload (new session / Claude restart / user `/clear`s)
+### On reload (new session / tool restart / context clear)
 
-The main skill (`trtc/SKILL.md` Step 0) already reads the file before routing. When onboarding is invoked with a loaded session, behave as follows:
+When onboarding is invoked with a loaded session file, behave as follows:
 
 1. **`status = active` or `paused`, file fresh (updated_at < 30 days)**: skip Stage 0 and Stage 1 question flow entirely. Open with: "Picking up where we left off — {last_recap}. Continue from step {current_step}?" (translate to user's language). If the user confirms, jump directly into the Path referenced by `intent`.
 2. **`status = completed`**: ask "Last run completed the {product} integration. Want to add another feature, or start fresh?"
@@ -118,26 +103,12 @@ completed_steps:            # 已通过 apply 校验的 step
   - live/login-auth
   - live/device-control
 
-# --- UI customizations done by the user after integration ---
-# Populated by A2-Q4-UI (controlled adjustment sub-flow).
-# Read by topic when adding new features later — so subsequent code generation
-# respects the user's manual adjustments (e.g. don't regenerate layout.css if
-# the user already moved the members panel).
-ui_customizations:
-  theme_overridden: false       # true if overrides.css was generated
-  layout_modified: false        # true if layout.css was edited
-
-# --- UI generation mode (conference scenarios only) ---
-# Set by A2-Q0.5 to drive topic's code generation strategy.
-# - full-ui:  topic generates a fused Vue SFC (template + AtomicXCore bindings
-#             + style) using room-builder's scenario template as visual spec
-# - headless: topic generates composable / store / types only; user writes
-#             their own UI. No .vue files, no reference components.
-# - null:     non-conference scenario, or user never reached A2-Q0.5 — topic
-#             falls back to its default per-slice code-example strategy
-# Once written by A2-Q0.5, this field is permanent for the session. Users
-# cannot switch modes mid-integration — they must restart to pick differently.
-ui_mode: null                   # full-ui | headless | null
+# --- UI 定制 ---
+ui_preferences:
+  brand_color: null
+  font: null
+  corner_radius: null
+  theme: null
 
 # --- 对话恢复辅助 ---
 last_recap: "Live on iOS, adding gift to existing project, at step A2.3"
@@ -147,12 +118,12 @@ last_recap: "Live on iOS, adding gift to existing project, at step A2.3"
 
 | Skill | Reads session file? | Writes session file? |
 |-------|:---:|:---:|
-| `trtc/SKILL.md` (main router) | ✅ Step 0 | ❌ |
-| `onboarding/SKILL.md` (this file) | ✅ every turn | ✅ at checkpoints above |
-| `search/SKILL.md` | ❌ stateless | ❌ |
-| `docs/SKILL.md` | ❌ stateless | ❌ |
-| `apply/SKILL.md` | ❌ independent input | ❌ |
-| `topic/SKILL.md` | reserved for future integration | reserved |
+| `trtc-router.mdc` (main router) | ✅ Step 0 | ❌ |
+| `trtc-onboarding.mdc` (this file) | ✅ every turn | ✅ at checkpoints above |
+| `trtc-search.mdc` | ❌ stateless | ❌ |
+| `trtc-docs.mdc` | ❌ stateless | ❌ |
+| `trtc-apply.mdc` | ❌ independent input | ❌ |
+| `trtc-topic.mdc` | reserved for future integration | reserved |
 
 Skills not listed above receive `product` / `platform` / other inputs explicitly from the caller. Do not synthesize or read the session file from them.
 
@@ -189,9 +160,10 @@ Before asking anything, silently extract what you can from the user's first mess
 |---|---|---|
 | 远程医疗 / 在线问诊 / 医患沟通 / telemedicine / remote consultation | `conference` | `telemedicine` |
 | 在线教育 / 网课 / 答疑 / 在线课堂 / online classroom / e-learning | `conference` | `online-classroom` |
-| 常规会议 / 企业会议 / 部门例会 / general meeting / corporate meeting / internal meeting | `conference` | `general-meeting` |
+| 企业会议 / 部门例会 / 标准会议 / corporate meeting / internal meeting | `conference` | `corporate-meeting` |
 | 研讨会 / webinar / 大型线上会议 / large seminar | `conference` | `webinar-large` |
-| 视频面试 / 远程面试 / video interview / 视频答辩 / 在线评审 | `conference` | `general-meeting`（少数人面对面，属通用会议形态） |
+| 视频面试 / 远程面试 / video interview / 视频答辩 / 在线评审 | `conference` | `corporate-meeting`（少数人面对面，贴近标准会议） |
+
 **How to apply this table**: If the first message matches a row here and does NOT also explicitly name a TRTC product, treat `product` as inferred by this table. Mention the mapping in the recap (e.g. "Here's what I picked up: - Product: Conference (from 远程医疗问诊)"). If the row lists two candidate products, do NOT pick one silently — present both in the recap and let the user confirm.
 
 **From project file scan** (run these in parallel if the environment allows):
@@ -215,7 +187,7 @@ The `target_features` list is the answer to "how do you know the goal?" — it i
 
 ### Unavailable product gate (run after inference, before Stage 1)
 
-Currently only **Conference** has full integration support. If Stage 0 inferred `product` as one of the unavailable products (Chat, Call, Live, RTC Engine), do NOT proceed into Stage 1. Instead, immediately inform the user that detailed integration guides for this product are not yet available, and point them to the official docs (from the product's `llms_file` in `index.yaml`).
+Currently only **Conference** has full integration support. If Stage 0 inferred `product` as one of the unavailable products (Chat, Call, Live, RTC Engine), do NOT proceed into Stage 1. Instead, immediately inform the user that detailed integration guides for this product are not yet available, and point them to the official docs (from the product's `llms_file` in `knowledge-base/index.yaml`).
 
 ---
 
@@ -260,7 +232,7 @@ Recap what you heard, then ask:
 
 Trigger: `product`, `platform`, and `intent` are all inferred, AND `intent ≠ explore`, AND (if `intent ∈ {integrate-feature, integrate-scenario, expand}`) at least one of `scenario` / `target_features` is inferred.
 
-When `intent = explore`: skip 1A entirely — go directly to the explore handler (show a 3-sentence overview of the product from `index.yaml` `products[].description` plus a link from the product's `llms_file`, then stop). Do not show a recap card for explore.
+When `intent = explore`: skip 1A entirely — go directly to the explore handler (show a 3-sentence overview of the product from `knowledge-base/index.yaml` `products[].description` plus a link from the product's `llms_file`, then stop). Do not show a recap card for explore.
 
 Show a recap card. Only include lines for fields that were actually inferred — do not fabricate a `Goal` line when `target_features` is empty.
 
@@ -301,12 +273,12 @@ Question text: "您感兴趣的产品是哪个？" (English equivalent: "Which p
 | 5 | RTC Engine — low-level real-time audio/video engine for custom scenarios (coming soon) | `product = rtc-engine` |
 | 6 | Type something | free-text |
 
-**Unavailable product handling:** If the user selects a product marked "coming soon" (Chat, Call, Live, RTC Engine), immediately inform them that detailed integration guides for this product are not yet available, and point to official docs (from the product's `llms_file` in `index.yaml`). Do NOT proceed into Path A1/A2/B/C for unavailable products — the experience will dead-end.
+**Unavailable product handling:** If the user selects a product marked "coming soon" (Chat, Call, Live, RTC Engine), immediately inform them that detailed integration guides for this product are not yet available, and point to official docs (from the product's `llms_file` in `knowledge-base/index.yaml`). Do NOT proceed into Path A1/A2/B/C for unavailable products — the experience will dead-end.
 
 **Free-text handling (option 6):**
 
 1. Read `knowledge-base/index.yaml`.
-2. Tokenize the user's free text. Do Chinese↔English bridging yourself for common terms; fall back to `search/SKILL.md`'s "Keyword Hints" table (~8 rows of non-intuitive SDK-proprietary mappings like 互踢 → kick-offline, PK → battle, 黑屏 → setLiveID) only when the user uses one of those colloquial terms. Match the resulting keywords against every slice's `tags` and `description`, plus every scenario's `name` and `description`.
+2. Tokenize the user's free text. Do Chinese↔English bridging yourself for common terms; fall back to `trtc-search.mdc`'s keyword mapping table (non-intuitive SDK-proprietary mappings like 互踢 → kick-offline, PK → battle, 黑屏 → setLiveID) only when the user uses one of those colloquial terms. Match the resulting keywords against every slice's `tags` and `description`, plus every scenario's `name` and `description`.
 3. Rank matches by tag intersection count (ties broken by product fit).
 4. Take the top scenario (if any scenario scored ≥ 2 tag hits) and the top slice, resolve them to a product.
 5. Recommend back:
@@ -362,16 +334,16 @@ Each path opens with a one-sentence recap of the current session state and then 
 
 | Path | Trigger (`intent`) | Summary | Reference file to load |
 |------|-----------------------------------|---------|----------------------|
-| **A1** Demo Quickstart | `demo` | Executor mode — clone the official demo into a separate directory, configure credentials, run it. Do NOT touch the user's project. | `reference/path-a1-demo.md` |
-| **A2** Direct Integration | `integrate-scenario`, `integrate-feature` | Co-developer mode — scan the project, write code following slice-defined best practices. Every step silently runs through `apply/SKILL.md` as an internal quality gate before being declared done. Users never see apply. | `reference/path-a2-integrate.md` |
-| **B** Troubleshooting | `troubleshoot`, or review-intent triage triggered by Hard rule #1 | Debugger mode — walk the diagnostic tree, find root cause, fix. Starts with B-Q0 triage (A/B/C/D/E intent classification) to route review-wording users correctly. | `reference/path-b-troubleshoot.md` |
-| **C** Feature Expansion | `expand` | Advisor + Implementer — auto-detect existing TRTC setup, recommend the next feature, then delegate step-by-step implementation to Path A2's flow. | `reference/path-c-expand.md` |
+| **A1** Demo Quickstart | `demo` | Executor mode — clone the official demo into a separate directory, configure credentials, run it. Do NOT touch the user's project. | `.claude/skills/trtc/onboarding/reference/path-a1-demo.md` |
+| **A2** Direct Integration | `integrate-scenario`, `integrate-feature` | Co-developer mode — scan the project, write code following slice-defined best practices. Every step silently runs through `trtc-apply.mdc` as an internal quality gate before being declared done. Users never see apply. | `.claude/skills/trtc/onboarding/reference/path-a2-integrate.md` |
+| **B** Troubleshooting | `troubleshoot`, or review-intent triage triggered by Hard rule #1 | Debugger mode — walk the diagnostic tree, find root cause, fix. Starts with B-Q0 triage (A/B/C/D/E intent classification) to route review-wording users correctly. | `.claude/skills/trtc/onboarding/reference/path-b-troubleshoot.md` |
+| **C** Feature Expansion | `expand` | Advisor + Implementer — auto-detect existing TRTC setup, recommend the next feature, then delegate step-by-step implementation to Path A2's flow. | `.claude/skills/trtc/onboarding/reference/path-c-expand.md` |
 
 **How to use this table**:
 
 1. Look up the row matching `intent` from `.trtc-session.yaml`.
 2. Open a one-sentence recap of what's already in `.trtc-session.yaml` (acknowledge the user's context; don't re-ask).
-3. `Read` the reference file for the full flow, then follow it from the first question onwards.
+3. Read the reference file for the full flow, then follow it from the first question onwards.
 4. If mid-path the user switches intent (e.g., finished A1 and wants to integrate → A2), save `current_step` to `.trtc-session.yaml`, then load the new path's reference file.
 
 **explore intent**: not listed here. `intent = explore` is handled inline in Stage 1 (Branch 1A / Q2 option 5): show a 3-sentence overview + llms_file link, then stop. No reference file.
@@ -384,8 +356,8 @@ Do not actively ask "anything else?" after a path completes. End the reply natur
 
 **Docs fallback** is the only escape hatch in Stage 3, and it triggers reactively, not proactively:
 
-- If the user comes back with a follow-up question that doesn't match any of the four paths' patterns (no integration verb, no error signal, no "add X" request), AND the knowledge base has no matching slice for the question, route to `docs/SKILL.md`.
-- If the user explicitly asks a fact / decision question mid-path ("btw, how much does this cost?", "does this support 500 people?"), pause by saving `current_step` to `.trtc-session.yaml` and hand off to `docs/SKILL.md`. Return to the saved step when docs finishes.
+- If the user comes back with a follow-up question that doesn't match any of the four paths' patterns (no integration verb, no error signal, no "add X" request), AND the knowledge base has no matching slice for the question, route to `trtc-docs.mdc`.
+- If the user explicitly asks a fact / decision question mid-path ("btw, how much does this cost?", "does this support 500 people?"), pause by saving `current_step` to `.trtc-session.yaml` and hand off to `trtc-docs.mdc`. Return to the saved step when docs finishes.
 
 Do not present a "what would you like next?" menu after every path. The user will ask if they need more.
 
@@ -446,25 +418,4 @@ These rules are checked **on every turn**, regardless of which stage or path you
 
 5. **One known field per turn.** Never re-ask for information the user has already provided (product, platform, intent, scenario, project_state). Check `.trtc-session.yaml` first.
 
-6. **No dumping raw slice content.** Always go through onboarding flow first. If the user's intent is clearly conceptual/learning ("how does X work"), hand off to `docs` skill rather than paraphrasing slices yourself. The `docs` skill will decide slice-first (for error codes / official patterns / API comparisons) vs llms.txt-direct (for conceptual explanations / pricing / migration).
-
-7. **Scenario handoff 是不可跳过的阻塞门。** 当 `intent = integrate-scenario` 且 A2-Q0 已选定具体 scenario 时：
-
-   - MUST 加载 `topic/SKILL.md` 并将执行权完整交给 topic。
-   - MUST NOT 在 onboarding 内直接生成任何业务代码文件（.vue / .ts / .swift / .kt / .dart 等）。
-   - MUST NOT 一次性输出完整项目代码——逐步执行、逐步 apply 是 topic 的核心设计，不可绕过。
-   - MUST 在 handoff 前将 `current_step = 'topic-handoff'` 和 `scenario = <chosen-id>` 写入 `.trtc-session.yaml`。
-
-   **Self-check 信号（每次准备写文件前执行）：**
-   如果你的下一个动作是 Write / Edit 一个业务代码文件，而以下任一条件为真——你正在违规，立即 STOP：
-   - `.trtc-session.yaml` 中 `current_step` 不是 `'topic-handoff'` 且 topic 从未被加载
-   - `intent = integrate-scenario` 但你仍在 onboarding skill 内执行
-   - 你正在一次性生成超过 1 个 slice 对应的代码（topic 是逐步的）
-
-   **违规时的强制动作：**
-   1. STOP 当前生成
-   2. 不输出已生成的代码
-   3. 回到 handoff 点，加载 `topic/SKILL.md`，按 topic 流程逐步执行
-   4. 不向用户解释内部流程细节——只需自然地开始 topic 的 Step 1/2/3
-
-   **唯一豁免：** `intent = integrate-feature`（单功能集成）不走 topic，仍在 onboarding A2 内逐步执行并调用 apply。此规则仅约束 scenario-driven 流程。
+6. **No dumping raw slice content.** Always go through onboarding flow first. If the user's intent is clearly conceptual/learning ("how does X work"), hand off to `trtc-docs.mdc` rather than paraphrasing slices yourself. The `trtc-docs.mdc` rule will decide slice-first (for error codes / official patterns / API comparisons) vs llms.txt-direct (for conceptual explanations / pricing / migration).

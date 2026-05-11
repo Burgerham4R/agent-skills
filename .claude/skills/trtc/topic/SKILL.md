@@ -41,6 +41,27 @@ If a scenario matches, read its file: `knowledge-base/{scenario.file}`. This con
 
 If no scenario matches exactly, compose an ad-hoc sequence from relevant slices. Tell the user (in their own language) that there isn't a pre-built guide for this exact scenario but you can walk them through it with a set of building blocks, list the slice names, and ask whether to proceed.
 
+### Step 1.5: Present scenario capabilities (and pick coverage if applicable)
+
+**MANDATORY before any code is written** (including before any Step 3.5 `ui_mode` work). This step runs even when onboarding handed off a concrete scenario — the Step 1 skip applies only to *scenario matching*, not to capability presentation.
+
+Each scenario file declares its own format. Open `knowledge-base/{scenario.file}` and follow its **「能力展示」** (form A) or **「能力展示与 coverage 选择」** (form B) section verbatim. See `knowledge-base/scenario-spec.md` for the two forms.
+
+- **Form A (single complete capability set)**: render the file's "展示文案" to the user, then proceed to Step 2. Do NOT ask the user any coverage question — every slice in the scenario will be implemented.
+- **Form B (主链路 + 可选增强)**: render the file's "展示文案", then use `AskUserQuestion` per the file's "AskUserQuestion 选项" table. Persist the user's pick to `.trtc-session.yaml`:
+  ```yaml
+  session_context:
+    enhancement_level: minimal | complete   # minimal = P0 only; complete = P0 + P1
+  ```
+
+If the scenario file does not provide either section, fall back to: list every entry in its `index.yaml` `slices` array as one tier, ask "继续？" (yes/no), and treat it as form A with all slices included. Then file an issue against the scenario authoring spec.
+
+**Skip Step 1.5 only if** the user explicitly said "完整版 / give me everything / all features" in their initial request — set `enhancement_level: complete` silently and continue. Do **not** skip just because onboarding handed off a scenario id; onboarding does not own this question.
+
+`enhancement_level` is the contract for downstream steps — see Step 3 and Step 3.5. Form A scenarios may treat the field as `complete` by default since there is no "minimal" subset.
+
+
+
 ### Step 2: Check prerequisites
 
 Present the scenario's prerequisites to the user. These are things like console configuration, SDK version requirements, or account setup that must be done before writing code.
@@ -49,7 +70,14 @@ Ask the user to confirm they're ready before diving into implementation. This pr
 
 ### Step 3: Walk through each step
 
-For each step in the scenario:
+**Slice sequence depends on the scenario's form (see Step 1.5):**
+
+- **Form A scenarios**: walk every slice the scenario file lists (in document order).
+- **Form B scenarios**: walk slices filtered by `session_context.enhancement_level` — `minimal` = P0 only, `complete` = P0 + P1.
+
+If `enhancement_level` is unset on a Form B scenario, you skipped Step 1.5 illegally. STOP and run Step 1.5 first. Silent skipping is forbidden.
+
+For each step in the (filtered) scenario sequence:
 
 1. **Explain what this step does and why** — one or two sentences of context
 2. **Load the relevant slice**:
@@ -137,31 +165,18 @@ and composable-bindings mapping — it is not limited to Conference.
 
 **Pre-generation: UI-region-to-slice binding audit (MANDATORY for `full-ui`)**
 
-Before writing any code, perform this binding audit:
+Read the scenario file's **「UI 区域 / Slice 映射」** table (see `scenario-spec.md` §3.4). That table — authored per scenario — is the contract for which UI regions get wired vs hidden.
 
-1. **Enumerate UI regions** in the reference HTML: for each major structural
-   section (stage, toolbar, side-panel content areas, chat, participant list,
-   etc.), record its root class name.
-2. **Cross-reference against the scenario's slice list**: for each UI region,
-   check whether a corresponding slice exists in the scenario's `slices` array
-   (read from `knowledge-base/{scenario.file}`). A "corresponding slice" is one
-   whose capability domain maps to that UI region (e.g. `{product}/room-chat`
-   covers `.ui-chat-list` and `.ui-chat-input`).
-3. **Binding decision per region:**
+For each row in the table:
 
-   | Scenario slice present? | composable-bindings.md entry? | Action |
-   |---|---|---|
-   | Yes | Yes | **MUST fully implement** — wire composables per bindings.md; stub placeholder is NOT acceptable |
-   | Yes | No | **Block — update composable-bindings.md first**, then implement |
-   | No | — | Omit UI region entirely (do not produce a non-functional placeholder) |
+- **Form A scenario** (single column "对应 slice"): wire the slice per `composable-bindings.md`. If the slice has no composable-bindings entry, **block** — update `composable-bindings.md` first, then implement. Do not stub.
+- **Form B scenario** (two columns "minimal" / "complete"): pick the column matching `session_context.enhancement_level`. The cell tells you literally what to do:
+  - "显示" → wire the slice per `composable-bindings.md` (block on missing entry, same as form A).
+  - "隐藏" → remove the element from `<template>`, OR keep with `v-if="false"` plus a comment naming the unselected slice. Do NOT render an inert button — that produces the "click does nothing" bug.
 
-4. **Record the audit result** as an inline comment at the top of the generated
-   SFC, listing which slices were bound and which regions were omitted.
+If the scenario file has no UI mapping table but the scenario is in `scenario-mapping.md` (i.e. has reference HTML), block and tell the user the scenario authoring is incomplete; do NOT improvise the mapping yourself. The mapping table is per-scenario judgement, not topic's.
 
-This audit is the fix for the class of bug where a UI region from the reference
-HTML (e.g. the chat panel) is present in the visual spec but left as a stub
-because no composable mapping was found. If the audit finds a missing binding,
-update `composable-bindings.md` before proceeding — do not silently omit or stub.
+Record the audit result as an inline comment at the top of the generated SFC, listing which slices were bound and which regions were hidden.
 
 **Generation rules by mode:**
 
@@ -170,43 +185,6 @@ update `composable-bindings.md` before proceeding — do not silently omit or st
 | `full-ui` | Vue SFC (template + script + style) | Run the UI-region-to-slice binding audit above first. Then mirror the reference HTML structure in `<template>`. Class names MUST come from the reference HTML or `uikit/references/component-catalog.md` — do NOT invent new class names. Replace static state classes (`.is-off`, `.is-open`) with reactive `:class` bindings per composable-bindings.md. Wire buttons with `@click` and lists with `v-for` against the mapped composables. In `<style>`, import the theme tokens and component CSS from the path specified in scenario-mapping.md. |
 | `headless` | Composables + stores + types + README | Generate `src/trtc/composables/*.ts`, `src/trtc/types/index.ts`, and a top-level `README.md`. Do NOT generate any `.vue` files. Do NOT generate example components. The README documents each composable's return signature with a 3-line usage snippet. |
 | `null` or unset | Topic's default strategy | Fall back to the per-slice code-example approach (pre-ui_mode behavior). Unchanged. |
-
-**Full-UI self-check (MANDATORY — run before writing any `.vue` file when `ui_mode = full-ui`):**
-
-**⚠️ EXECUTION PROTOCOL — this is NOT a mental check, it is a mandatory output step:**
-
-1. **Before calling Write/Edit on any `.vue` file**, you MUST first output a **UI Audit Table** in your response. This table is visible to the user and serves as proof that the check was executed.
-2. The table compares each region of your generated code against the reference HTML.
-3. **If all rows pass** → proceed to Write the file immediately (no user confirmation needed).
-4. **If any row fails** → STOP. Do NOT write the file. Discard the draft, re-read the reference HTML, and regenerate. Then output a new audit table.
-
-**UI Audit Table format (must appear in your response before any Write call):**
-
-```
-## UI Audit — {filename}
-| Region | Reference HTML class | Generated class | Status |
-|--------|---------------------|-----------------|--------|
-| Top bar | .ui-topbar | .ui-topbar | ✅ |
-| Stage | .ui-stage | .ui-stage | ✅ |
-| Bottom bar | .ui-bottombar | .ui-bottombar | ✅ |
-| Side panel | .ui-side-panel | .ui-side-panel | ✅ |
-| ... | ... | ... | ... |
-
-Style imports: ✅ tokens.css + layout.css + component CSS
-State classes reactive: ✅ all .is-* use :class bindings
-```
-
-**Audit checks:**
-
-| # | Check | Fail condition |
-|---|---|---|
-| U1 | Template structure mirrors reference HTML regions | Generated `<template>` does NOT contain the same top-level structural sections as the reference HTML (check by comparing top-level class names in both) |
-| U2 | Class names come from reference HTML / component-catalog | Any class in `<template>` that is NOT present in the reference HTML or `component-catalog.md` — i.e. you invented a new class name |
-| U3 | `<style>` imports theme tokens + component CSS | No `@import` or equivalent link to the theme CSS path specified in scenario-mapping.md |
-| U4 | State classes are reactive | Any `.is-off`, `.is-open`, `.is-active` appears as a static class instead of `:class` binding |
-| U5 | No invented structural markup | Core layout is achieved through custom HTML/CSS instead of reusing reference HTML structure |
-
-**Why this works as a hard gate:** The audit table is a visible artifact in the response. If you skip it, the absence is obvious — both to the user and to yourself on re-read. It forces you to actually compare class names before writing, rather than relying on a "mental note" that gets bypassed under generation pressure.
 
 **What "mirror" means concretely:**
 - Copy the reference HTML's DOM hierarchy for each region (topbar, stage, bottombar, side-panel).

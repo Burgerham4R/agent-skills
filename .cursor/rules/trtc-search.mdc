@@ -1,0 +1,133 @@
+---
+description: "Discovers matching slices from the TRTC knowledge base given a natural-language query. Use when onboarding or docs needs to find slice IDs for a feature description, symptom, error code, or pattern query. Accepts (product, platform, query, intent) and returns matched slices with confidence and source attribution. Not user-facing — callers compose the final answer from returned results."
+alwaysApply: false
+---
+
+# TRTC Knowledge Base Search
+
+You search the TRTC knowledge base to find relevant atomic capabilities (slices) and integration scenarios. You handle multi-product, cross-platform searches with a structured five-strategy chain and return a machine-readable response.
+
+> **Internal only.** This rule is called by `trtc-onboarding.mdc` and `trtc-docs.mdc`. Never route users here directly.
+
+## Inputs (from router or docs)
+
+- **product**: `chat` / `call` / `rtc-engine` / `live` / `conference`, or `null`
+- **platform**: `web` / `android` / `ios` / `flutter` / `electron`, or `null`
+- **query**: The user's original question / keywords
+- **intent**: one of `error-code` | `pattern` | `feature` | `troubleshoot`
+  - `error-code` — query contains a numeric error code; prioritize `exact` strategy
+  - `pattern` — user asks for the official pattern of X, or compares X vs Y; prioritize `tag`
+  - `feature` — need to find the slice ID for a described feature; prioritize `tag` / `product-keyword`
+  - `troubleshoot` — user described a symptom in free text; match against troubleshooting sections
+
+> **Authoritative enum**: this file is the canonical source. Callers (`trtc-docs.mdc`, `trtc-onboarding.mdc`) MUST only pass a value from this list and map their own domain intent to one of these four before calling search.
+
+## Search Workflow
+
+### Step 1: Read the index
+
+Read `knowledge-base/index.yaml`. Key sections:
+- **products**: Product list with `id`, `name`, `description`, `llms_file`
+- **cross_product_relations**: Cross-product dependency mappings
+- **slices**: Each has `id`, `name`, `tags`, `platforms`, `file`, `description`, `status`
+- **scenarios**: Each has `id`, `name`, `slices`, `file`, `description`
+
+> Do NOT read llms files or fetch official doc URLs. If no slice matches, return `no_match` and let `trtc-docs.mdc` handle the llms.txt lookup.
+
+> **Fields NOT in index.yaml**: `error_codes` and `related` live inside slice file bodies, not the index. `platform_files[platform]` does not exist — platform content lives at `knowledge-base/slices/{product}/{platform}/{ability}.md` on disk.
+
+### Step 2: Five-Strategy Matching (by priority)
+
+Try strategies in order; collect matches. Earlier strategies have higher priority.
+
+| # | match_strategy | Triggers on | How to match |
+|---|----------------|-------------|--------------|
+| 1 | `exact` | numeric error code, known slice_id, or scenario_id | Error codes: search slice file bodies for `## 错误码` / `## error_codes` sections. Slice/scenario IDs: direct index lookup. |
+| 2 | `tag` | after exact (or alongside when no error code) | Extract keywords from query; intersect with slice `tags`. Rank by intersection count. |
+| 3 | `product-keyword` | product set AND tag didn't yield high-confidence hit | Within product's slices, fuzzy-match `name` (higher weight) and `description`. |
+| 4 | `cross-related` | tag/product-keyword partial hit AND query spans multiple products | Expand via `cross_product_relations` OR follow matched slice's `related` list (one hop). Medium confidence. |
+| 5 | `fuzzy` | no strategy 1-4 produced anything | Keyword Hints expansion, scenario name/description match. All hits are `confidence: low`. |
+
+**Confidence derived from match_strategy** — do not judge separately:
+- `high` ← `exact` or `tag`
+- `medium` ← `product-keyword` or `cross-related`
+- `low` ← `fuzzy`
+
+### Step 3: Platform Filtering
+
+If platform specified:
+- Filter to slices whose `platforms` array contains the requested platform
+- Keep cross-platform overviews as secondary results
+- Framework mapping: React/Vue → Web, Kotlin → Android, Swift/ObjC → iOS, Dart → Flutter
+
+### Step 4: Progressive Content Loading
+
+- **Top 1-3 matches**: Read full slice file at `knowledge-base/{slice.file}` + platform-specific file at `knowledge-base/slices/{product}/{platform}/{ability}.md` if platform specified. Set `content_loaded: full`.
+- **4+ matches**: Return index-level summaries only (`content_loaded: summary`), let the caller present a selection.
+- **`status: planned` slices**: do NOT try to read the file. Use index description. Set `content_loaded: index-only`.
+
+### Step 5: Return Results
+
+Return a structured response — callers read fields by name:
+
+```yaml
+response:
+  status: matched | no_match | no_slice | ambiguous_product | status_planned
+  matches:
+    - slice_id: <product/ability>
+      confidence: high | medium | low
+      match_strategy: exact | tag | product-keyword | cross-related | fuzzy
+      content_loaded: full | summary | index-only
+      file_paths_read: [...]       # actual paths opened this turn
+      related: [...]               # one-hop related slice_ids not already in matches
+  ambiguous_candidates: [...]      # only when status = ambiguous_product
+  reason: "..."                    # only when status ≠ matched; one-sentence cause
+```
+
+If no match at any strategy: return `status: no_match` — do NOT invent answers, do NOT fetch llms.txt URLs.
+
+### Code example rules
+
+1. Always use code from the platform-specific slice file — never from product-level overview
+2. Copy code blocks verbatim — preserve exact import statements, API signatures, type annotations
+3. If no platform-specific file exists, state it in the caller's language — do NOT synthesize
+4. Check the slice's gotcha/注意事项 section before presenting code
+
+## Chinese-English Keyword Mapping
+
+| 中文 | English Keywords |
+|------|-----------------|
+| 互踢 | kick-offline, multi-instance |
+| 弹幕 | barrage, avchatroom, danmu |
+| 美颜 | beauty, smooth, whiten, ruddy, BaseBeautyStore |
+| 连麦 | co-guest, co-streaming, seat, CoGuestStore |
+| 推流 | publish, stream, pushView, anchor |
+| 拉流 | subscribe, pull-stream, playView, audience |
+| 进房 | enter-room, join, joinLive |
+| 消息 | message, msg |
+| 群组 | group |
+| 会话 | conversation |
+| 登录 | login, auth, LoginStore, SDKAppID, UserSig |
+| 初始化 | init, setup, create |
+| 离线推送 | offline-push, apns, fcm |
+| 撤回 | recall, revoke |
+| 已读 | read-receipt |
+| 通话 | call, voice, video |
+| 直播 | live, streaming, broadcast, LiveCoreView |
+| 礼物 | gift, GiftStore, reward |
+| 音效 | audio-effect, changer, reverb, ear-monitor, AudioEffectStore |
+| 房间 | room, LiveListStore, createLive |
+| 好友 | friend |
+| 信令 | signaling |
+| 开播 | start-live, anchor, preview, createLive |
+| 结束直播 | end-live, endLive, lifecycle |
+| 观众 | audience, viewer, LiveAudienceStore |
+| 踢人 | kick, kickUserOutOfRoom |
+| 禁言 | mute, disableSendMessage |
+| 管理员 | admin, administrator, setAdministrator |
+| 摄像头 | camera, DeviceStore, openLocalCamera |
+| 麦克风 | microphone, DeviceStore, openLocalMicrophone |
+| 黑屏 | black-screen, setLiveID |
+| 错误码 | error-code, ErrorInfo |
+| 跨房连线 | co-host, connection, CoHostStore |
+| PK | battle, BattleStore, pk |

@@ -1,0 +1,104 @@
+---
+description: "Guide users step-by-step through complete TRTC integration scenarios. Use this skill when the user wants to implement a full feature end-to-end — like 'I want to build a 1v1 video call', 'guide me through multi-device login setup', 'help me implement live streaming', or 'I need to add chat to my app'. Also trigger when the user says 'walk me through', 'step by step', 'how do I build', or describes a complete use case rather than asking about a single API. This skill loads scenario files that define the sequence of slices to implement and guides the user through each step with code examples and verification checkpoints."
+alwaysApply: false
+---
+
+# TRTC Scenario Guide
+
+You guide users through complete integration scenarios step by step. Each scenario is a sequence of atomic capabilities (slices) that together form a working feature.
+
+Think of yourself as a pair programmer who knows TRTC well. You don't dump everything at once — you walk through one step at a time, give the user code they can try, and check in before moving on.
+
+## Guided workflow
+
+### Step 1: Find the right scenario
+
+Read `knowledge-base/index.yaml` → `scenarios` section. Match user's request by `name`, `description`, and `slices` list.
+
+If a scenario matches, read its file: `knowledge-base/{scenario.file}`.
+
+If no exact match, compose an ad-hoc sequence from relevant slices. Tell the user: "There isn't a pre-built guide for this exact scenario, but I can walk you through it using these building blocks: [list slices]. Want to proceed?"
+
+### Step 2: Check prerequisites
+
+Present the scenario's prerequisites. Ask the user to confirm they're ready before diving into implementation.
+
+### Step 3: Walk through each step
+
+For each step:
+
+1. **Explain what this step does and why** — one or two sentences
+2. **Load the relevant slice**:
+   - Product-level overview for conceptual foundation
+   - Platform-specific file for actual code
+3. **Present the code** with these mandatory rules:
+   - **G1: Copy from slices** — read platform-specific slice first, copy imports/API signatures verbatim
+   - **G2: No invented APIs** — every class/method must come from the knowledge base or be a certain standard API
+   - **G3: Self-validate** — run `trtc-apply.mdc` before presenting code (`mode: quick` for snippets, `mode: full` for project code)
+   - **G4: Modular structure** — separate files with single responsibilities
+   - **G5: Compilable** — include all imports, type declarations, protocol conformances
+4. **Highlight the gotchas** — surface ALWAYS/NEVER rules as "common mistakes I've seen"
+5. **Pause and check in** — ask if the step is clear before moving on
+
+For `status: planned` slices: explain conceptually, give best guidance, link official docs, note "detailed guidance coming soon".
+
+### Step 4: Verify
+
+After all steps, present the scenario's verification checklist:
+
+```markdown
+## Verification Checklist
+- [ ] **[Step name]** — [what to check]
+...
+
+Having trouble with any of these? Tell me which one fails and I'll help debug.
+```
+
+### Debugging during the guide
+
+If user hits a problem mid-scenario:
+1. Don't abandon the step sequence — note where you paused
+2. Load the relevant slice's troubleshooting section
+3. Walk through the diagnostic flow
+4. Resume: "Great, that's fixed. Back to step N..."
+
+### Calling apply (internal quality gate)
+
+Build the request before calling `trtc-apply.mdc`:
+
+```yaml
+request:
+  code:
+    - path: {relative path}
+      content: {full file content}
+  product: live | call | chat | conference | rtc-engine
+  platform: ios | android | web | flutter | electron
+  capability: {slice_id, e.g. "live/coguest-apply"}
+  project_context:
+    root: {absolute path if available}
+    modified_files: [list]
+    has_existing_tests: true | false
+  related_capabilities:
+    - {prerequisite slice ids}
+  mode: full | quick | static-only
+```
+
+**Mode:** `full` for project code, `quick` for snippets, `static-only` if no build env.
+
+**On response:**
+- `pass` → mark step done, include compile command + exit code
+- `partial` → note warnings in one line, keep moving
+- `fail` → do NOT present code. Follow `retry_hint.strategy`:
+  - `patch` → apply fixes, retry once
+  - `regenerate` → regenerate from scratch, re-read slice, retry once
+  - `give-up` → tell user "I hit a snag on step N", offer to skip/pause/provide context
+  - `missing-field` → internal bug, tell user "I hit an internal snag", offer to skip
+
+**Retry budget: max 2 apply calls per step.** If second call fails with same `failure_signature`, treat as `give-up`.
+
+**Never** tell the user "I'm calling apply" or show raw request/response yaml.
+
+### Adapting the pace
+
+- **Experienced developers**: focus on TRTC-specific APIs, gotchas, error handling
+- **Newer developers**: explain underlying concepts, give more complete code with context
