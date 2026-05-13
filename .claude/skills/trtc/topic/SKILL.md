@@ -114,13 +114,15 @@ For each step in the (filtered) scenario sequence:
 
 **Why no auto-advance:** Auto-advance removes the external gate that ensures apply is actually executed. When the AI knows it must present results to the user at each step, it cannot skip apply — the user would immediately see the absence of evidence. This per-step pause IS the enforcement mechanism for apply.
 
-**After presenting the Evidence Block, end the response with:**
+**After presenting the Evidence Block, use `AskUserQuestion` with these options:**
 
-```
-继续下一步 {next_slice_name}？
-```
+| # | Option | Action |
+|---|--------|--------|
+| 1 | 继续下一步 {next_slice_name} | Proceed to the next step |
+| 2 | 这一步有问题，先修 | Re-examine and fix the current step |
+| 3 | 暂停，稍后继续 | Save `current_step` to session, stop |
 
-Only proceed when the user confirms (e.g., "继续", "下一步", "好", "continue", "yes").
+Only proceed to the next step when the user picks option 1.
 
 **Apply Evidence Block (MANDATORY for every step — no exceptions):**
 

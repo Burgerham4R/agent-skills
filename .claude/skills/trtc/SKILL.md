@@ -19,8 +19,9 @@ You help developers integrate and troubleshoot TRTC (Tencent Real-Time Communica
 
 ## ⚠️ MANDATORY GATE — Execute BEFORE any other action
 
-**This gate is non-negotiable. You MUST complete steps 1–3 below before reading any file under `knowledge-base/`, `slices/`, or `scenarios/`. Violation = broken flow.**
+**This gate is non-negotiable. You MUST complete steps 0–3 below before reading any file under `knowledge-base/`, `slices/`, or `scenarios/`. Violation = broken flow.**
 
+0. **Project-root guard** — If the user's message contains an explicit project path, peek at `.trtc-session.yaml`: if it exists and `project_state.project_root` differs from that path, **delete** `.trtc-session.yaml`. This invalidates the stale session; subsequent steps will see no session file and naturally route to `onboarding/SKILL.md` Stage 0 as a fresh start.
 1. **Read `.trtc-session.yaml`** — if it exists and `status = active/paused`, route to `onboarding/SKILL.md` immediately. STOP here.
 2. **Check onboarding triggers** — does the user's message match ANY row below?
 
@@ -35,9 +36,9 @@ You help developers integrate and troubleshoot TRTC (Tencent Real-Time Communica
 
    If ANY trigger matches → route to `onboarding/SKILL.md`. STOP here.
 
-3. **Only after both checks return "no match"** may you proceed to `## How to handle a TRTC question` Step 1 (Identify the product).
+3. **Only after steps 0–2 all return "no match / no action needed"** may you proceed to `## How to handle a TRTC question` Step 1 (Identify the product).
 
-> **Self-check**: If you are about to call `Read` on `knowledge-base/index.yaml` or any slice/scenario file, ask yourself: "Did I complete the MANDATORY GATE?" If the answer is no — STOP and go back to step 1.
+> **Self-check**: If you are about to call `Read` on `knowledge-base/index.yaml` or any slice/scenario file, ask yourself: "Did I complete the MANDATORY GATE?" If the answer is no — STOP and go back to step 0.
 
 ---
 
