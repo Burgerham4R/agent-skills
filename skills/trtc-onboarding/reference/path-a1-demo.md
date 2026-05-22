@@ -7,7 +7,7 @@
 
 **CRITICAL: Do NOT write custom code in the user's project.** Path A1 runs the official pre-built demo in a separate directory, even if the user's project already has TRTC dependencies.
 
-**Source of truth for demo info:** Read `llms/{product}/{platform}.txt` (e.g., `llms/live/ios.txt`). If unavailable, fall back to `llms/{product}.txt`. As a last resort, fetch trtc.io.
+**Source of truth for demo info:** Run `Bash(curl -s https://trtc.io/llms/{product}/{platform}.txt)` to get the platform index (e.g., `https://trtc.io/llms/conference/web.txt`). Look for "Run Sample Code" / "Run Demo" links. If the curl returns HTML (404 page) or empty, fall back to `Bash(curl -s https://trtc.io/llms/{product}.txt)` for the product-level index.
 
 Recap example:
 > Got it — you want to try the Live iOS demo. I'll clone it into `/tmp/`, leave your project untouched.
