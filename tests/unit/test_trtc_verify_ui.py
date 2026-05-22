@@ -83,13 +83,17 @@ def test_noop_when_ui_mode_not_full_ui(tmp_path):
     """Session with ui_mode != full-ui → exit 0, no stderr, no work attempted.
 
     This pins the most fundamental contract: the verifier is a no-op for
-    sessions that don't opt into full-ui mode. Without this, the verifier
-    would burn cycles (or, worse, fail) on unrelated projects.
+    sessions that don't opt into full-ui mode. official-roomkit deliberately
+    bypasses meeting-classic verification. Without this, the verifier would
+    burn cycles (or, worse, fail) on unrelated projects.
     """
-    session = _write_session(tmp_path, ui_mode=None, project_root=tmp_path / "fake-project")
-    result = _run_verify("--session-path", str(session))
-    assert result.returncode == 0, f"expected exit 0, got {result.returncode}; stderr={result.stderr}"
-    assert result.stderr == "", f"expected empty stderr, got: {result.stderr!r}"
+    for mode in (None, "official-roomkit"):
+        session = _write_session(tmp_path, ui_mode=mode, project_root=tmp_path / f"fake-project-{mode or 'null'}")
+        result = _run_verify("--session-path", str(session))
+        assert result.returncode == 0, (
+            f"mode={mode}; expected exit 0, got {result.returncode}; stderr={result.stderr}"
+        )
+        assert result.stderr == "", f"mode={mode}; expected empty stderr, got: {result.stderr!r}"
 
 
 # ---------------------------------------------------------------------------

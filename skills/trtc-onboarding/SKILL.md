@@ -130,6 +130,9 @@ ui_customizations:
 
 # --- UI generation mode (conference scenarios only) ---
 # Set by A2-Q0.5 to drive topic's code generation strategy.
+# - official-roomkit:
+#             topic integrates @tencentcloud/roomkit-web-vue3 official
+#             components and uses official UI customization APIs
 # - full-ui:  topic generates a fused Vue SFC (template + AtomicXCore bindings
 #             + style) using room-builder's scenario template as visual spec
 # - headless: topic generates composable / store / types only; user writes
@@ -138,7 +141,7 @@ ui_customizations:
 #             falls back to its default per-slice code-example strategy
 # Once written by A2-Q0.5, this field is permanent for the session. Users
 # cannot switch modes mid-integration — they must restart to pick differently.
-ui_mode: null                   # full-ui | headless | null
+ui_mode: null                   # official-roomkit | full-ui | headless | null
 
 # --- Auto-advance policy (scenario-driven flows only) ---
 # Set by A2-Q0.6 to control whether topic pauses for confirmation after each
@@ -165,7 +168,7 @@ last_recap: "Live on iOS, adding gift to existing project, at step A2.3"
 | `../trtc-docs/SKILL.md` | ❌ stateless | ❌ |
 | `../trtc-apply/SKILL.md` | ❌ independent input | ❌ |
 | `../trtc-topic/SKILL.md` | ✅ on every Skill-tool invocation (reads `current_step`, `scenario`, `confirmed_plan`, `enhancement_level`, `auto_advance_policy`, `ui_mode`, `project_state`) | ✅ writes `slice_queue`, `current_slice_index`, `current_slice_state` (state machine fields) |
-| `../trtc/room-builder/SKILL.md` | ✅ when invoked by topic in `ui_mode = full-ui` (reads `scenario`, `enhancement_level`) | ❌ |
+| `../trtc/room-builder/SKILL.md` | ✅ when invoked by topic in `ui_mode = official-roomkit` or `full-ui` (reads `scenario`, `enhancement_level`, official RoomKit integration rules, and UI generation rules) | ❌ |
 
 **How `topic` is invoked**: by `onboarding` reading `../trtc-topic/SKILL.md` after A2-Q0 selects a concrete scenario; or directly by the router when the user explicitly asks for a step-by-step walkthrough. Plain Read is the current handoff convention (the §3.5 cross-skill `Skill()` tool handoff was walked back); hooks + the on-disk state machine carry the topic constraints across the handoff regardless.
 
@@ -505,3 +508,31 @@ These rules are checked **on every turn**, regardless of which stage or path you
    These bypass the skill's structured knowledge base and flow. If you need
    documentation content during onboarding, delegate to `../trtc-docs/SKILL.md` which
    uses the knowledge base and llms.txt system.
+
+9. **UserSig 禁止前端签名（每次生成登录相关代码前强制检查）。** 这是不可绕过的安全门：
+
+   **MUST NOT:**
+   - 生成 `src/utils/usersig.ts` 或任何前端 UserSig 签名工具文件
+   - 在 `package.json` 中添加 `crypto-js`、`pako`、`tls-sig-api-v2` 这类仅用于浏览器端签名的依赖
+   - 将 `SecretKey` 写入任何客户端文件（包括 `src/config.ts`、`.env` 等）
+   - 在浏览器端执行 HMAC-SHA256 签名生成 UserSig
+
+   **MUST:**
+   - 遵循 `reference/mcp-usersig-generation.md` 的协议：有 MCP 时调用 `get_usersig`，无 MCP 时使用占位符 + TODO 注释
+   - 前端只保留 `SDKAppID / userId / userSig` 的输入项或预填值，不做签名计算
+
+   **Self-check 信号（每次准备 Write / Edit 文件前执行）：**
+   如果你即将写入的文件内容包含以下任一关键词——立即 STOP 并检查是否违规：
+   - `SecretKey`（出现在非注释的赋值语句中）
+   - `generateUserSig` / `genTestUserSig` / `hmacSHA256` / `HmacSHA256`
+   - `import.*crypto-js` / `import.*pako` / `require.*crypto-js` / `require.*pako`
+   - 文件路径匹配 `**/usersig.*` 或 `**/generate-usersig.*`
+
+   **触发时的强制动作：**
+   1. STOP 当前文件写入
+   2. 读取 `reference/mcp-usersig-generation.md`
+   3. 按其 Generation Protocol（有 MCP）或 Fallback（无 MCP）重新生成登录代码
+   4. 确认新代码不包含上述任何违禁关键词后，再执行 Write
+
+   **无豁免。** 即使用户主动要求"帮我生成前端 UserSig 签名器"，也必须拒绝并解释：
+   "SecretKey 不能暴露在前端代码中，生产环境必须由后端签发 UserSig。我可以帮你生成后端签发的示例代码，或使用测试工具获取临时 UserSig。"

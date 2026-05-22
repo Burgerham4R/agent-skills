@@ -224,3 +224,10 @@ onUnmounted(() => {
 | 2. 静态规则级 | 进房路径、离开与结束动作分层明确 | 搜索 `joinRoom` / `createAndJoinRoom` / `leaveRoom` / `endRoom` | 进入、离开、结束职责清晰 |
 | 3. 运行时级 | 创建 / 加入会议后 `currentRoom` 可用 | 进房并查看调试状态 | 可读取有效 `roomId` |
 | 4. 业务行为级 | 密码房与错误提示、离开与结束后的页面状态正确收口 | 分别测试密码入会、离会与结束会议 | UI 与房间真实状态一致，失败时有明确反馈 |
+
+---
+
+> **official-roomkit 模式用户注意**：如果 `ui_mode = official-roomkit`，
+> 房间操作通过 `conference` 对象而非直接 composable。
+> 完整的 `conference` API 签名、枚举定义和代码示例见
+> **[`conference/web/official-roomkit-api.md`](./official-roomkit-api.md)**。

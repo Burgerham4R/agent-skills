@@ -82,15 +82,17 @@ def test_noop_when_ui_mode_not_full_ui(tmp_path):
 
     Same fundamental contract as the verifier. The SessionStart hook fires
     on every Claude Code session start in this repo; if we'd mutate state
-    just because ui_mode is null, we'd corrupt unrelated workflows.
+    just because ui_mode is null or official-roomkit, we'd corrupt unrelated
+    workflows.
     """
-    project = tmp_path / "user-project"
-    project.mkdir()
-    session = _write_session(tmp_path, ui_mode=None, project_root=project)
-    result = _run_prepare("--session-path", str(session))
-    assert result.returncode == 0, f"expected exit 0; stderr={result.stderr}"
-    # No themes dir was created.
-    assert not (project / "src" / "themes").exists()
+    for mode in (None, "official-roomkit"):
+        project = tmp_path / f"user-project-{mode or 'null'}"
+        project.mkdir()
+        session = _write_session(tmp_path, ui_mode=mode, project_root=project)
+        result = _run_prepare("--session-path", str(session))
+        assert result.returncode == 0, f"mode={mode}; expected exit 0; stderr={result.stderr}"
+        # No themes dir was created.
+        assert not (project / "src" / "themes").exists()
 
 
 # ---------------------------------------------------------------------------

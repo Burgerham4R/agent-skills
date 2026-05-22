@@ -108,6 +108,7 @@ For each step in the (filtered) scenario sequence:
    - **G3: Self-validate before presenting** — Before showing or writing code, call `../trtc-apply/SKILL.md` per the contract described in **"Calling apply"** below. Snippet-only answers can use `mode: quick` (5-point checklist). Code that will be written into the user's project MUST go through `mode: full` (constraint compliance → compilation → integration safety).
    - **G4: Modular structure** — Break implementations into separate files with clear single responsibilities. Don't put all logic into one massive file. Each file should be focused and manageable.
    - **G5: Compilable by default** — Generated code must be compilable when added to a project with the correct SDK installed. Include all necessary imports, type declarations, and protocol conformances. If something can't compile without additional context, note it with a `// TODO:` comment explaining what's needed.
+   - **G6: No client-side UserSig signing** — NEVER generate `src/utils/usersig.ts` or any browser-side UserSig signing utility. NEVER add `crypto-js`, `pako`, `tls-sig-api-v2` as dependencies. NEVER expose `SecretKey` in client code. For login/auth steps, follow `../trtc-onboarding/reference/mcp-usersig-generation.md`: use MCP `get_usersig` when available, otherwise use placeholder values with TODO comments pointing to the console. If your generated code contains `HmacSHA256`, `generateUserSig`, `SecretKey` in a non-comment assignment, or imports `crypto-js`/`pako` — STOP, discard, and regenerate following the protocol.
 
 4. **Highlight the gotchas** — surface the ALWAYS/NEVER rules that apply to this step. Frame them as "the common mistakes I've seen" rather than abstract rules.
 5. **Pause and confirm** — after presenting code and running `apply.py --slice <id>`, ALWAYS pause and wait for user confirmation before proceeding to the next step. See **Step 3 progression rules** below.
@@ -141,10 +142,26 @@ Only proceed to the next step when the user picks option 1.
 
 ### Step 3.5: Apply `ui_mode` to code generation
 
-When `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml` has `ui_mode` set (any product), the code-generation
-strategy branches. Read this state ONCE at skill entry and cache it for the
-whole session. This section applies to **any product** that has a reference HTML
-and composable-bindings mapping — it is not limited to Conference.
+When `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml` has `ui_mode` set, the
+code-generation strategy branches. Read this state ONCE at skill entry and
+cache it for the whole session. `official-roomkit` is conference-only; `full-ui`
+applies to products/scenarios that have a reference HTML and
+composable-bindings mapping.
+
+**At skill entry, if `ui_mode = official-roomkit`, load and follow:**
+
+1. `${CLAUDE_PLUGIN_ROOT}/skills/trtc/room-builder/SKILL.md` — use its
+   "官方 RoomKit 集成模式" section as the source of truth.
+2. `${CLAUDE_PLUGIN_ROOT}/skills/trtc-onboarding/reference/mcp-usersig-generation.md`
+   — use it as the source of truth for test UserSig handling. Do not generate a
+   client-side signer or write `SecretKey` into `src/`.
+3. The official quick-start and UI customization docs linked from that section
+   when exact package imports, component names, or customization API details
+   matter.
+
+Do NOT load region fragments, run the full-ui UI-region-to-slice audit, copy the
+meeting-classic theme, or generate `ui-*` based meeting components in
+`official-roomkit` mode.
 
 **At skill entry, if `ui_mode = full-ui`, load these spec files:**
 
@@ -193,9 +210,28 @@ Record the audit result as an inline comment at the top of the generated SFC, li
 
 | `ui_mode` | Output shape | Strategy |
 |---|---|---|
+| `official-roomkit` | Official RoomKit integration files | Integrate `@tencentcloud/roomkit-web-vue3` official components (`ConferenceMainView` / `ConferenceMainViewH5` inside `UIKitProvider`，`UIKitProvider` 从 `@tencentcloud/uikit-base-component-vue3` 导入) into the existing Vue 3 app. Verify the resolved RoomKit version is `>=5.4.3` before using UI customization APIs. Use `conference.login()`, `setSelfInfo()`, `createAndJoinRoom()` / `joinRoom()`, room events, and official customization APIs from room-builder's "官方 RoomKit 集成模式". Do NOT generate meeting-classic SFCs, `ui-*` class templates, or theme assets. |
 | `full-ui` | Vue SFC (template + script + style) | Run the UI-region-to-slice binding audit above first. Then for each child component: (1) resolve its region file from `region-manifest.yaml`, (2) execute paste-then-bind (Step 1: paste region HTML verbatim, Step 2: add Vue bindings per composable-bindings.md). Class names MUST come from the region HTML or `uikit/references/component-catalog.md` — do NOT invent new class names. In `<style>`, import the theme tokens and component CSS from the path specified in scenario-mapping.md. Scoped CSS should be minimal — only for Vue-specific adjustments not covered by the theme. |
 | `headless` | Composables + stores + types + README | Generate `src/trtc/composables/*.ts`, `src/trtc/types/index.ts`, and a top-level `README.md`. Do NOT generate any `.vue` files. Do NOT generate example components. The README documents each composable's return signature with a 3-line usage snippet. |
 | `null` or unset | Topic's default strategy | Fall back to the per-slice code-example approach (pre-ui_mode behavior). Unchanged. |
+
+**Official RoomKit mode acceptance check:**
+
+- The generated app imports and renders the official RoomKit components, not a
+  recreated meeting UI.
+- Login code obtains `userSig` through the existing MCP/local-signing protocol,
+  business backend, runtime input, or placeholder. It must not create
+  `src/utils/usersig.ts`, expose `SecretKey` in client config, or use
+  `crypto-js` / `pako` / `HmacSHA256` / `tls-sig-api-v2` to sign in browser
+  code.
+- UI changes are implemented through official APIs only:
+  `setWidgetVisible()`, `registerWidget()`, `onWill()`, and documented
+  `setFeatureConfig()` calls.
+- `setWidgetVisible()`, `registerWidget()`, and `onWill()` are registered after
+  `conference.login()` and before entering the room whenever possible.
+- `shareLink` configuration is applied immediately after
+  `createAndJoinRoom()` / `joinRoom()` succeeds, when the final `roomId` is
+  known.
 
 **What "mirror" means concretely — the Paste-then-bind protocol:**
 
