@@ -11,7 +11,7 @@ def invoke_cli(prompt: str, cwd: Path, timeout: int = 300) -> tuple[int, str]:
     Returns (exit_code, raw_output_text).
     Raises TimeoutError if exceeds timeout.
     """
-    # Try codebuddy CLI first, fall back to claude
+    # Try codebuddy CLI first, fall back to claude-internal, then claude
     cli_cmd = _find_cli()
 
     # Inherit env and ensure API key disabled flag is set
@@ -38,7 +38,7 @@ def invoke_cli(prompt: str, cwd: Path, timeout: int = 300) -> tuple[int, str]:
 
 def _find_cli() -> str:
     """Find available CLI binary."""
-    for cli in ["codebuddy", "claude"]:
+    for cli in ["codebuddy", "claude-internal", "claude"]:
         try:
             proc = subprocess.run(
                 [cli, "--version"],

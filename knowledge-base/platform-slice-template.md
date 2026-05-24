@@ -127,8 +127,11 @@ api_docs:                      # [必填] 该平台对应的 API 参考文档链
      — 代码生成约束 = 给 AI 读的可检查规则
 
      所有规则必须基于实际 SDK 行为，不允许凭经验推测。
-     ⚠️ 核心要求：每条 MUST / MUST NOT 必须自带**结构化 `verify:` yaml 块**，否则不合格。
-     verify 的完整字段规范见 slice-spec.md 第四节「Verify 类型规范」。
+     ⚠️ 核心要求：每条 MUST / MUST NOT 使用 **prose + backtick** 格式：
+        N. **<动作> `符号`** — <违反后果>。
+           **Verify**: 检查是否存在 `符号`。
+     backtick 里的符号 = apply 唯一会 grep 的东西；规则文字其他词 apply 不验。
+     完整原则与红旗词表见 slice-spec.md 第四节「MUST 规则的维度对齐原则」。
 -->
 
 ### 编译必要条件 [必填]
@@ -146,43 +149,43 @@ api_docs:                      # [必填] 该平台对应的 API 参考文档链
 
 #### MUST（生成时必须包含）
 
-<!-- 指引: 每条格式：编号 + 规则 + 违反后果 + 紧接着一段 ```yaml verify: ...``` 块
+<!-- 指引: 每条格式：
 
-     verify.type 的 5 种类型（尽量用前 4 种，少用 manual）：
-     — grep        静态正则匹配，需给 expect.op + value
-     — not_grep    静态禁用模式，命中必须为 0
-     — compile     跑平台编译，expect.exit_code（默认 0）
-     — runtime_log 触发 trigger 描述的操作后抓日志
-     — manual      无法机检，交人工；不能单独出现
+     N. **<动作> `符号`** — <违反后果>。
+        **Verify**: 检查是否存在 `符号`。
+
+     重要原则（详细规则见 slice-spec.md 第四节「MUST 规则的维度对齐原则」）：
+     — backtick 里的符号 = apply 唯一会 grep 的东西
+     — 规则文字描述的判断 / 选择 / 等价 / 条件分支，apply 全部不验
+     — 多 backtick 的规则可以接受，apply 解析为「全部都要出现」（all-of）
+
+     ⚠️ 红旗词：以下写法说明 MUST 写错了，要么拆分要么下沉到软规则区
+     — 「或 / 任一」、「等价 / 或类似」、「按业务 / 根据场景」
+     — 「留给 / 负责」、「多 backtick 但 Verify 只提一个」
 
      示例（复制修改）：
-     1. **所有 Combine sink 必须 `[weak self]`** — 不用会导致循环引用，ViewModel 永远不释放。
-        ```yaml
-        verify:
-          - type: grep
-            in: "Views/**/*.swift"
-            pattern: '\.sink\s*\{\s*\[weak self\]'
-            expect: { op: ">=", value: 1 }
-        ```
+     1. **必须导入 `useRoomState`** — 否则状态与 UI 无法收口。
+        **Verify**: 检查是否存在 `useRoomState`。
 
-     只写本 slice 独有的规则。跨 slice 通用规则（如 [weak self]、主线程更新）
-     如果在多个 slice 中反复出现，考虑提到产品级概览或 base-setup 中。
-     但如果该规则在本 slice 有特殊表现形式，仍需列出。
+     2. **必须从 `tuikit-atomicx-vue3/room` 导入** — 错包的同名 hook 不会跑通。
+        **Verify**: 检查是否存在 `tuikit-atomicx-vue3/room` 与 `useRoomState`
+        同时出现在同一 import 语句。
+
+     只写本 slice 独有的规则。跨 slice 通用规则如果在多个 slice 中反复出现，
+     考虑提到产品级概览或 base-setup 中。
 -->
 
 #### MUST NOT（生成时绝不能出现）
 
-<!-- 指引: 同上格式，每条必须带结构化 verify yaml 块。
+<!-- 指引: 同上格式，每条 = 一个禁现的具体符号或符号组合。
      重点写「看起来能跑但逻辑错误」的写法 — 这类问题编译器抓不到，只有了解业务语义才能避免。
 
      示例：
-     1. **不要在 applyForSeat 成功回调中开设备** — .success 仅表示申请发出，不是主播同意。
-        ```yaml
-        verify:
-          - type: not_grep
-            in: "**/*.swift"
-            pattern: '\.success[^}]*openLocal(Camera|Microphone)'
-        ```
+     1. **不要把 `leaveRoom()` 当成解散会议** — 会导致房主离开后房间仍在。
+        **Verify**: 检查 `leaveRoom` 不与房主路径并列出现，房主收口必须用 `endRoom`。
+
+     注：MUST NOT 的 Verify 同样依赖 backtick 符号 + apply 的「all-of」grep；
+     避免用「不应该 / 不要」+ 抽象描述这种 grep 无法验证的写法。
 -->
 
 ### 集成检查点 [必填]

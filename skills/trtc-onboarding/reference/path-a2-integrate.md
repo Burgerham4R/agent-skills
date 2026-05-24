@@ -103,16 +103,19 @@ Question text: "What kind of experience are you building?"
 
 Options are **product-dependent**. Pull the concrete scenario list from `${CLAUDE_PLUGIN_ROOT}/knowledge-base/index.yaml` scenarios whose `product` matches the identified product. The sets below are reference — always cross-check against the current index.
 
+**Caveat for v1**: `index.yaml` lists the canonical set of scenarios; the user-facing menu MUST additionally filter against `reference/supported-matrix.md` Conference Scenarios ✅ list. Index ≠ menu — other `status: active` conference scenarios exist as content but are not yet exposed as integration entry points.
+
 **If `product = conference`:**
 
 | # | Option | Fills |
 |---|--------|-------|
-| 1 | Webinar / large-audience seminar | `scenario = webinar-conference` |
-| 2 | Telemedicine / 1v1 remote consultation | `scenario = 1v1-video-consultation` |
-| 3 | Multi-doctor / multidisciplinary consultation | `scenario = medical-multidoctor-consultation` |
-| 4 | General meeting / 常规会议 (generic, no specialized format) | `scenario = general-conference` |
-| 5 | I want to pick individual features myself | fall through to A2-Q1 |
-| 6 | Type something | free-text |
+| 1 | General meeting / 通用会议 (default for most meeting use cases) | `scenario = general-conference` |
+| 2 | Telemedicine / 1v1 视频问诊 (medical online consultation) | `scenario = 1v1-video-consultation` |
+| 3 | I want to pick individual features myself | fall through to A2-Q1 |
+
+(3 options; "Type something" is auto-provided by AskUserQuestion's Other — do NOT add it as an explicit option.)
+
+**Free-text handling**: if the user's free text maps to a hidden scenario (e.g. "webinar", "研讨会", "multidoctor", "会诊"), trigger the Integration scenario gate recap from `onboarding/SKILL.md` → `### Integration scenario gate` instead of falling through to A2-Q1.
 
 **If `product = live`:**
 
@@ -123,29 +126,37 @@ Options are **product-dependent**. Pull the concrete scenario list from `${CLAUD
 | 3 | I want to pick individual features myself | fall through to A2-Q1 |
 | 4 | Type something | free-text |
 
-## A2-Q0.5 — UI generation mode (conference scenarios only)
+## A2-Q0.5 — Conference integration mode (conference scenarios only)
 
 **Trigger**: the user picked one of the conference scenarios in A2-Q0
 (`general-conference` / `webinar-conference` / `1v1-video-consultation` / `medical-multidoctor-consultation`).
 Skip for all other products and for the A2-Q1 fall-through branch.
 
-**Purpose**: decide how topic will generate code — as a fused Vue SFC that
-includes UI, or as headless composables where the user supplies their own UI.
-Ask BEFORE handing off to topic, so topic reads `ui_mode` from the session
-file at skill entry.
+**Purpose**: decide how topic will integrate the conference UI — as the
+official RoomKit UI, as an AI-generated custom Vue SFC, or as headless
+composables where the user supplies their own UI. Ask BEFORE handing off to
+topic, so topic reads `ui_mode` from the session file at skill entry.
 
 **Question text** (translate to user's language at runtime):
 
-> How do you want the code to be generated?
+> How do you want to integrate the conference UI?
 
 | # | Option | Fills | Next |
 |---|--------|-------|------|
-| 1 | Business code + full UI (recommended: AI generates a fused Vue SFC — template, AtomicXCore bindings, and styles — using the {scenario} UI template as visual reference; runs out of the box) | `ui_mode = full-ui` | hand off to `../../trtc-topic/SKILL.md` (Read) with full-ui spec |
-| 2 | Business logic only (headless composables / stores / types; you write your own UI — good for projects that already have a design system) | `ui_mode = headless` | hand off to `../../trtc-topic/SKILL.md` (Read) with headless spec |
-| 3 | Type something | free-text | re-infer |
+| 1 | Official UI (recommended: use the official meeting components for fast integration, with full meeting UI out of the box — video, toolbar, member list, chat, etc. Tune buttons, business widgets, click interceptors, share links, and layouts through official APIs) | `ui_mode = official-roomkit` | hand off to `../../trtc-topic/SKILL.md` (Read) with official-roomkit spec |
+| 2 | AI-generated full meeting UI (custom Vue SFC: template, AtomicXCore bindings, and styles, using the {scenario} UI template as visual reference; choose this when the customer explicitly wants a rebuilt/custom meeting screen) | `ui_mode = full-ui` | hand off to `../../trtc-topic/SKILL.md` (Read) with full-ui spec |
+| 3 | Business logic only (headless composables / stores / types; you write your own UI — good for projects that already have a design system) | `ui_mode = headless` | hand off to `../../trtc-topic/SKILL.md` (Read) with headless spec |
+| 4 | Type something | free-text | re-infer |
 
 Persist `ui_mode` to `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml`. Piggyback on the Stage 1 confirmed
 write — do NOT trigger an extra Write just for this field.
+
+**Default / recommendation rule**: If the user says "集成会议", "接入会议",
+"快速接入", "官方 UI", "RoomKit", "TUIRoomKit", or asks for UI tweaks on top of
+the official meeting UI, recommend option 1 and map short confirmations
+("推荐", "默认", "1", "官方") to `ui_mode = official-roomkit`. Only recommend
+option 2 when the user explicitly wants AI to generate a custom/full meeting
+screen rather than using the official UI.
 
 **Telemedicine default**: maps to room-builder's `one-on-one` scene. Multi-party
 consultation is out of scope for this release (see pending_todos).
@@ -234,14 +245,26 @@ When the current step's slice is `{product}/login-auth` (or any slice whose
 implementation involves `login()` / `LoginStore` / TIM login / TRTC
 `enterRoom` authentication):
 
-Before generating the login code, read `reference/mcp-usersig-generation.md`
-and follow its Generation Protocol. This ensures:
+**⚠️ BLOCKING GATE — 必须在生成任何登录代码之前完成：**
+
+1. Read `reference/mcp-usersig-generation.md` and follow its Generation Protocol.
+2. Determine the UserSig 来源：MCP available → call `get_usersig`；MCP unavailable → use placeholders.
+3. **If this protocol is not followed, the generated login code MUST NOT be written to disk.**
+
+This gate ensures:
 - A real, working test userSig is embedded for immediate testing (if MCP available)
 - Input fields remain available for custom userID/userSig at runtime
 - The generated login page works out-of-the-box without manual credential setup
+- **No client-side signing code is ever generated** (no `crypto-js`, no `pako`, no `SecretKey` in source)
 
 If MCP is not available, follow the Fallback section in `mcp-usersig-generation.md`
 (placeholders + instruction comments).
+
+**Violation self-check (same weight as apply gate):** If your about-to-write login
+code contains `HmacSHA256`, `crypto-js`, `pako`, `SecretKey` in a non-comment
+assignment, `generateUserSig`, or creates a file matching `**/usersig.*` — you
+are violating this gate. STOP, discard, re-read `reference/mcp-usersig-generation.md`,
+and regenerate.
 
 ### Per-step execution
 

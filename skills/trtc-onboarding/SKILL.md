@@ -130,6 +130,9 @@ ui_customizations:
 
 # --- UI generation mode (conference scenarios only) ---
 # Set by A2-Q0.5 to drive topic's code generation strategy.
+# - official-roomkit:
+#             topic integrates @tencentcloud/roomkit-web-vue3 official
+#             components and uses official UI customization APIs
 # - full-ui:  topic generates a fused Vue SFC (template + AtomicXCore bindings
 #             + style) using room-builder's scenario template as visual spec
 # - headless: topic generates composable / store / types only; user writes
@@ -138,7 +141,7 @@ ui_customizations:
 #             falls back to its default per-slice code-example strategy
 # Once written by A2-Q0.5, this field is permanent for the session. Users
 # cannot switch modes mid-integration — they must restart to pick differently.
-ui_mode: null                   # full-ui | headless | null
+ui_mode: null                   # official-roomkit | full-ui | headless | null
 
 # --- Auto-advance policy (scenario-driven flows only) ---
 # Set by A2-Q0.6 to control whether topic pauses for confirmation after each
@@ -165,7 +168,7 @@ last_recap: "Live on iOS, adding gift to existing project, at step A2.3"
 | `../trtc-docs/SKILL.md` | ❌ stateless | ❌ |
 | `../trtc-apply/SKILL.md` | ❌ independent input | ❌ |
 | `../trtc-topic/SKILL.md` | ✅ on every Skill-tool invocation (reads `current_step`, `scenario`, `confirmed_plan`, `enhancement_level`, `auto_advance_policy`, `ui_mode`, `project_state`) | ✅ writes `slice_queue`, `current_slice_index`, `current_slice_state` (state machine fields) |
-| `../trtc/room-builder/SKILL.md` | ✅ when invoked by topic in `ui_mode = full-ui` (reads `scenario`, `enhancement_level`) | ❌ |
+| `../trtc/room-builder/SKILL.md` | ✅ when invoked by topic in `ui_mode = official-roomkit` or `full-ui` (reads `scenario`, `enhancement_level`, official RoomKit integration rules, and UI generation rules) | ❌ |
 
 **How `topic` is invoked**: by `onboarding` reading `../trtc-topic/SKILL.md` after A2-Q0 selects a concrete scenario; or directly by the router when the user explicitly asks for a step-by-step walkthrough. Plain Read is the current handoff convention (the §3.5 cross-skill `Skill()` tool handoff was walked back); hooks + the on-disk state machine carry the topic constraints across the handoff regardless.
 
@@ -234,6 +237,71 @@ Currently only **Conference** has full integration support (slices + scenarios).
 
 - **Blocked intents** (`integrate-scenario`, `integrate-feature`, `expand`): If `product` is NOT `conference`, do NOT proceed into Stage 1. Instead, immediately inform the user that detailed integration guides for this product are not yet available, and point them to the official docs (from the product's `llms_file` in `index.yaml`).
 - **Allowed intents** (`demo`, `troubleshoot`, `explore`): Always proceed into Stage 1 regardless of product. These paths rely on `llms.txt` indexing and trtc.io official docs, which are available for all products.
+
+### Integration platform gate (run after product gate, before Stage 1)
+
+The product gate above passes Conference. Within Conference, the integration path currently writes code only for **Web**. This gate blocks the same intents the product gate blocks — `integrate-scenario`, `integrate-feature`, `expand` — when `(product, platform)` is not ✅ in the Product × Platform table of `reference/supported-matrix.md`.
+
+- **Blocked intents** + non-(conference, web) → do NOT proceed into Stage 1. Show the unsupported-combo recap below; let the user pick a fallback.
+- **Allowed intents** (`demo`, `troubleshoot`, `explore`): always proceed regardless of platform.
+
+**Recap shown to the user** (translate to user's language):
+
+> 我看到你想集成 **{Product} on {Platform}**。
+>
+> 当前 skill 的集成能力一期只覆盖 **Conference Web**；
+> {Product} {Platform} 的集成支持 coming soon。
+>
+> 你想怎么继续？
+>
+> 1. 切到 Conference Web 集成（推荐）
+> 2. 看 {Product} {Platform} 官方 demo（demo 全平台支持）
+> 3. 查 {Product} {Platform} 文档（docs 全平台支持）
+
+(Use `AskUserQuestion` with these 3 options; "Type something" is auto-provided as the built-in Other — do NOT add it as an explicit option per Global rule #2.)
+
+**Branch behaviour:**
+
+| User picks | Next |
+|------------|------|
+| 1 | Overwrite session: `product=conference`, `platform=web`, keep intent. Proceed to Stage 1A recap. |
+| 2 | Set `intent=demo`; proceed into Path A1 with the original (product, platform). |
+| 3 | Hand off via `Skill(skill='trtc-docs')` with the original (product, platform); do NOT touch session further. |
+| Other (free text) | Re-run Stage 0 inference on the text, re-evaluate this gate. |
+
+This gate runs **only on new sessions** — when `current_step` is empty / null in the session file. If `current_step` is non-empty, an integration is already mid-flight; do NOT re-gate. See Hard rule #9.
+
+### Integration scenario gate (run after platform gate, before Stage 1)
+
+The platform gate above passes (Conference, Web). Within Conference Web, v1 ships only two scenarios: `general-conference` and `1v1-video-consultation`.
+
+**Trigger**: `intent ∈ {integrate-scenario, expand}` AND `(product, platform) == (conference, web)` AND `scenario` was inferred (from Stage 0 business-keyword mapping) AND that inferred scenario is NOT in the ✅ list of `reference/supported-matrix.md` Conference Scenarios table.
+
+When triggered, do NOT proceed into Stage 1. Show (translate to user's language):
+
+> 我看到你想做 **{inferred-scenario-display-name}**。
+>
+> 当前 skill 一期 Conference Web 只覆盖 **通用会议** 和 **1v1 视频问诊** 两个场景；
+> {inferred-scenario} coming soon。
+>
+> 你想怎么继续？
+>
+> 1. 改用**通用会议**场景集成（推荐，覆盖大多数会议形态）
+> 2. 改用 **1v1 视频问诊**场景集成
+
+(Use `AskUserQuestion` with these 2 options; "Type something" is auto-provided as Other.)
+
+**Branch behaviour:**
+
+| User picks | Next |
+|------------|------|
+| 1 | Set `scenario=general-conference`, proceed to Stage 1A recap. |
+| 2 | Set `scenario=1v1-video-consultation`, proceed to Stage 1A recap. |
+| Other (free text) | Re-run Stage 0 inference. If re-inferred scenario is still unsupported, re-show this gate. |
+
+**No-op conditions** — skip this gate entirely when:
+- `scenario` is null: user hasn't named a scenario yet; A2-Q0's narrowed menu handles selection.
+- `intent = integrate-feature`: single-feature integration; let A2-Q1 handle it unless `target_features` clearly belong to a coming-soon scenario (e.g., "webinar 等候室"). When uncertain, do NOT block.
 
 ---
 
@@ -372,6 +440,15 @@ Question text: "Which platform are you building on?"
 | 5 | Electron (desktop) | `platform = electron` |
 | 6 | Type something | free-text |
 
+**Integration intent narrowing**: when `intent ∈ {integrate-scenario, integrate-feature, expand}`, collapse this question to only 2 options (within AskUserQuestion's ≤4 limit):
+
+| # | Option | Fills |
+|---|--------|-------|
+| 1 | Web (React / Vue / plain JS) | `platform = web` |
+| 2 | Other platform — coming soon | trigger Integration platform gate recap |
+
+"Type something" is auto-provided by AskUserQuestion's Other — do NOT add it as an explicit option (Global rule #2). For all other intents (`demo`, `troubleshoot`, `explore`), keep the original 5-platform list above.
+
 ---
 
 ## Stage 2: The Four Paths (entry table)
@@ -505,3 +582,42 @@ These rules are checked **on every turn**, regardless of which stage or path you
    These bypass the skill's structured knowledge base and flow. If you need
    documentation content during onboarding, delegate to `../trtc-docs/SKILL.md` which
    uses the knowledge base and llms.txt system.
+
+9. **UserSig 禁止前端签名（每次生成登录相关代码前强制检查）。** 这是不可绕过的安全门：
+
+   **MUST NOT:**
+   - 生成 `src/utils/usersig.ts` 或任何前端 UserSig 签名工具文件
+   - 在 `package.json` 中添加 `crypto-js`、`pako`、`tls-sig-api-v2` 这类仅用于浏览器端签名的依赖
+   - 将 `SecretKey` 写入任何客户端文件（包括 `src/config.ts`、`.env` 等）
+   - 在浏览器端执行 HMAC-SHA256 签名生成 UserSig
+
+   **MUST:**
+   - 遵循 `reference/mcp-usersig-generation.md` 的协议：有 MCP 时调用 `get_usersig`，无 MCP 时使用占位符 + TODO 注释
+   - 前端只保留 `SDKAppID / userId / userSig` 的输入项或预填值，不做签名计算
+
+   **Self-check 信号（每次准备 Write / Edit 文件前执行）：**
+   如果你即将写入的文件内容包含以下任一关键词——立即 STOP 并检查是否违规：
+   - `SecretKey`（出现在非注释的赋值语句中）
+   - `generateUserSig` / `genTestUserSig` / `hmacSHA256` / `HmacSHA256`
+   - `import.*crypto-js` / `import.*pako` / `require.*crypto-js` / `require.*pako`
+   - 文件路径匹配 `**/usersig.*` 或 `**/generate-usersig.*`
+
+   **触发时的强制动作：**
+   1. STOP 当前文件写入
+   2. 读取 `reference/mcp-usersig-generation.md`
+   3. 按其 Generation Protocol（有 MCP）或 Fallback（无 MCP）重新生成登录代码
+   4. 确认新代码不包含上述任何违禁关键词后，再执行 Write
+
+   **无豁免。** 即使用户主动要求"帮我生成前端 UserSig 签名器"，也必须拒绝并解释：
+   "SecretKey 不能暴露在前端代码中，生产环境必须由后端签发 UserSig。我可以帮你生成后端签发的示例代码，或使用测试工具获取临时 UserSig。"
+
+10. **Integration support gate.** When `intent ∈ {integrate-scenario, integrate-feature, expand}` AND `current_step` is empty (new session), before letting topic / Path A2 / Path C generate any code, verify all applicable dimensions against `reference/supported-matrix.md`:
+
+   - `(product, platform)` is ✅ in the Product × Platform table.
+   - If `intent ∈ {integrate-scenario, expand}` AND `scenario` is already inferred: `scenario` is in the Conference Scenarios ✅ list.
+
+   If any check fails, route to the matching unsupported recap (`### Integration platform gate` or `### Integration scenario gate`). Never silently proceed into Stage 1.
+
+   **Legacy session exemption**: when `current_step` is non-empty, an integration is already mid-flight (started before this gate existed). Do NOT re-gate — the session reload logic (§"On reload") already skips Stage 0/1 entirely in this case, so the gates naturally never run. This rule documents the intent; no schema change is needed.
+
+   This rule does NOT apply to `demo` / `explore` (no code written into user files) or to `troubleshoot` diagnosis. Fix-code generation in troubleshoot is gated separately in `reference/path-b-troubleshoot.md` (Fix-write support gate) on (product, platform) only — scenario does not apply there.

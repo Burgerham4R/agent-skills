@@ -9,6 +9,10 @@ The full scope contract for ui_mode hooks (see in_scope below):
     AND intent == "integrate-scenario"
     AND scenario is registered with a theme
 
+`ui_mode == "official-roomkit"` is intentionally out of scope for these hooks:
+that mode uses the official RoomKit package/components and must not receive the
+local meeting-classic theme or ui-* verifier checks.
+
 The first three guard against hooks acting on unrelated workflows (live /
 chat / troubleshoot / demo). The fourth ties theme selection to the registry,
 so adding/removing themed scenarios is yaml-only.

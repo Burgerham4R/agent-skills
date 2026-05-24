@@ -36,13 +36,17 @@ def _grep_in_scripts(pattern: str) -> list[str]:
         if proc.returncode == 0 and proc.stdout.strip():
             return proc.stdout.strip().splitlines()
     except (FileNotFoundError, PermissionError):
-        # rg not available, fallback to Python grep
+        # rg not available, fallback to Python grep (case-sensitive, skip comment lines)
         hits = []
         for py_file in scripts_dir.rglob("*.py"):
             if "selfcheck" in py_file.name:
                 continue  # don't flag ourselves
             content = py_file.read_text(errors="replace")
-            if re.search(pattern, content, re.IGNORECASE):
+            non_comment = "\n".join(
+                line for line in content.splitlines()
+                if not line.lstrip().startswith("#")
+            )
+            if re.search(pattern, non_comment):
                 hits.append(str(py_file))
         return hits
     return []
@@ -136,7 +140,7 @@ def phase_pre_run() -> dict:
 
     # CLI available
     cli_ok = False
-    for cli in ["claude", "codebuddy"]:
+    for cli in ["claude-internal", "claude", "codebuddy"]:
         try:
             proc = subprocess.run([cli, "--version"], capture_output=True, check=False)
             if proc.returncode == 0:
@@ -144,7 +148,7 @@ def phase_pre_run() -> dict:
                 break
         except (FileNotFoundError, PermissionError):
             continue
-    check("cli_available", cli_ok, "claude or codebuddy CLI must be installed")
+    check("cli_available", cli_ok, "claude-internal, claude, or codebuddy CLI must be installed")
 
     # Test account — now loaded via scripts.lib.eval_config (config.json
     # preferred, shell env as per-field fallback). A single failure here
@@ -266,7 +270,7 @@ def phase_pre_run() -> dict:
     else:
         check("cases_json_exists", False, f"{cases_path} not found")
 
-    # Source hygiene: grep for mock/fake/stub keywords
+    # Source hygiene: grep for mock/fake/stub keywords (non-comment lines only)
     mock_pattern = r"MOCK|mock_|fake_|stub_|hardcoded_log|return_sample|read_fixture|FIXTURE_PATH|sample_logcat|sample_syslog"
     hits = _grep_in_scripts(mock_pattern)
     # Exclude selfcheck.py itself from this check

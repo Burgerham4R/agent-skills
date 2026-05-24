@@ -222,95 +222,85 @@ preflight:
 
 ## Phase 2: 约束合规检查
 
-按照两层约束逐条检查代码。**规则的执行依据是 slice 内的 `verify` 结构化字段**（见下），而不是自由发挥。
+apply 对每个相关 slice 的 MUST / MUST NOT 规则做静态字符串匹配。**规则的执行依据是 slice 规则文字中 backtick 包裹的符号**（``` `symbol` ```）——backtick 里的内容是 apply 唯一会 grep 的东西，规则文字其他部分（业务判断、调用顺序、等价处理等）不参与机械验证。
 
-### 2.0 规则格式与消费方式
+> 详细的规则写作原则见 `${CLAUDE_PLUGIN_ROOT}/knowledge-base/slice-spec.md` 第四节「MUST 规则的维度对齐原则」。
 
-slice 的 "代码生成约束" section 每条规则使用结构化格式，由 apply 解析后机器执行。规则结构见 `${CLAUDE_PLUGIN_ROOT}/knowledge-base/slice-spec.md` 的 "Verify 类型规范"。下面是 apply 对每种类型的执行约定：
+### 2.0 规则提取与执行
 
-| verify.type | apply 如何执行 | 判定成功条件 |
-|-------------|---------------|------------|
-| `grep` | 在 `verify.in`（默认 `**/*`，相对项目根）匹配 `pattern`，统计命中次数 | 命中次数满足 `verify.expect`（op + value） |
-| `not_grep` | 同上 | 命中次数 == 0 |
-| `compile` | 跑项目的平台编译命令（Phase 3 提供） | `exit_code == verify.expect.exit_code`（默认 0） |
-| `runtime_log` | 触发 `verify.trigger` 描述的操作后抓日志 | 日志包含 `verify.pattern`（按 `expect.op` 判定 contains/match） |
-| `manual` | 不执行；标记为 `needs_human_review` 放入输出 | — |
+apply 对每条规则的处理：
 
-### 兼容旧格式（过渡期）
+| 规则类型 | apply 做什么 | 判定成功条件 |
+|---------|------------|------------|
+| **MUST** | 从规则正文 + `**Verify**:` 行提取所有 backtick 包裹的符号作为 patterns；在 `<project_root>/src/**/*.{vue,ts}` 中 grep 每个 pattern（先剥离注释和字符串字面量再 grep） | 所有 pattern 各出现 ≥1 次 |
+| **MUST NOT** | 同上提取 backtick patterns | 所有 pattern 出现次数 = 0 |
 
-若 slice 仍用旧的 `**Verify**: <自由文本>` 写法，apply 按以下规则**尽力解析**，但会在输出里降级标注：
+**两个反作弊设计**：
 
-| 旧文本特征 | 映射为 |
-|------------|-------|
-| 以 `grep` / `rg` 开头 | `type: grep`，pattern 从命令中提取 |
-| 含"编译报错" / "compile error" | `type: compile`，expected 0 |
-| 含"日志" / "log" | `type: runtime_log` |
-| 含"人工" / "manual" / "人检" | `type: manual` |
-| 无法识别 | 降级为 `type: manual`，在输出里加 `warning: legacy_verify_format` |
-
-**目标**：逐步让 slice 作者迁移到结构化 yaml。apply 不硬性要求，但旧格式在输出证据时无法提供 `command / stdout`，只能给出"人眼核对"级别的证据。
+1. **注释与字符串剥离**：grep 之前先去掉 `// 注释` / `/* 注释 */` / `"字符串字面量"` / 模板字符串内容——避免 AI 在注释或假字符串里塞 pattern 凑过关。
+2. **fail message 不暴露 pattern**：apply 失败时只描述规则语义（如「规则 #3 未通过：必须出现房间进入 API」），不写出具体缺失的 backtick 内容——避免 AI 把 verifier 当 oracle 反推，看到 fail 直接补字符串。
 
 ### 2.1 产品级规则（来自产品概览的最佳实践）
 
-产品级规则是**行为级**的 ALWAYS / NEVER，**通常不带 `verify` 字段**（因为它们描述"做什么"而非"代码怎么写"）。apply 对它们的处理：
+产品级规则是**行为级**的 ALWAYS / NEVER（如「在业务后端生成 UserSig」），描述运行时行为而不是代码字面量，**apply 不强制验证**——这类规则属于 slice-spec 定义的「软规则」（参见 spec 第四节「软规则 vs 硬约束」）。
 
-| 检查类型 | 做什么 |
-|----------|--------|
-| **ALWAYS 规则** | 转译为一组静态查找词（来自规则描述里的关键 API 名），grep 代码是否出现预期的调用；找不到 → `warning`（不是 critical） |
-| **NEVER 规则** | 转译为禁用模式（如"不要在 .failure 里开设备"→ grep `.failure` 块内的 `openLocal*`），命中 → `issue` |
-
-> 产品级规则的机检精度天然不如平台级。**如果上游 skill 希望严格校验某条产品级 ALWAYS/NEVER，应当把它同步落到对应平台 slice 的 `verify` 字段里**，否则 apply 只能做"近似匹配"并加 `warning: loose_match` 标注。
+> 如果上游 skill 希望严格校验某条产品级规则，应当把它落到对应平台 slice 的 MUST/MUST NOT 里，并按 prose+backtick 格式给出可 grep 的具体符号。
 
 ### 2.2 平台级规则（来自平台文件的代码生成约束）
 
-平台级规则**每条必须带 `verify` 数组**（由 slice-spec.md 强制）。apply 的执行流程：
+平台级规则就是上节描述的 MUST/MUST NOT。apply 的执行流程：
 
 ```
-for rule in capability.platform_rules:
-  for v in rule.verify:
-    case v.type:
-      grep / not_grep → exec grep, 比对 expect
-      compile         → 记下来，留给 Phase 3 一次性跑
-      runtime_log     → 记下来，若 Phase 3 可编译则在运行时触发
-      manual          → 放入 response.constraint_check.manual_review
-  汇总该 rule 的所有 verify 结果：全 pass → rule 通过；任一 fail → issue
+for rule in slice.must_rules + slice.must_not_rules:
+  patterns = extract_backtick_symbols(rule.text + rule.verify_text)
+  src = strip_comments_and_strings(read("<project_root>/src/**/*.{vue,ts}"))
+  if rule is MUST:
+    fail if any pattern absent in src
+  else:  # MUST NOT
+    fail if any pattern present in src
 ```
 
-每条 issue 的 `evidence` 字段**必须包含实际执行的命令和输出**，不允许"凭感觉判定"。
+每条 issue 的 `evidence` 字段记录命中 / 缺失计数和涉及的 src 文件列表。**不暴露具体 pattern 字符串**——见上节反作弊设计。
 
-### 2.3 跨 slice 检查
+### 2.3 跨 slice 检查（当前未启用）
 
-**A. 前置状态验证**
+apply 当前**只跑当前 slice 的规则**。跨文件/跨 slice 的前置状态验证、跨产品依赖、平台生命周期、清理对称性等更宽的检查不在本 skill 范围。
 
-读取每个 slice 平台文件的 `前置条件` section 并转译为 grep 规则。例：
+> 跨 slice 的硬约束验证（如「必须先 login() 再 createAndJoinRoom()」「房间状态必须收口在单个 composable」）由 scenario 级的独立 verifier 承担——目前尚未实现，列在长期路线里。slice 级 apply 保持单 slice 单文件的最小职责。
 
-- 前置："已完成 `LoginStore.shared.login()`"
-- 转译：`type: grep, pattern: "LoginStore\.shared\.login\(", expect: ">= 1"`
+<!-- BACKLOG: scenario-level verifier 设计参考（v1 yaml-driven 时期遗存，apply.py 未实现）
 
-找不到前置调用 → `issue: missing_prerequisite`，指向对应的前置 slice（如 `live/login-auth`）。
+     以下是 V2 yaml-driven 引擎被 walked back 之前设想的 4 类跨 slice 检查。
+     当 scenario verifier 启动时可作为设计起点，不必从零设计。
+     注意：apply.py 当前不消费这些；维度对齐原则（spec 第四节）也要求这些规则
+     在 slice 级表达成 backtick 符号才能进 MUST，否则属软规则。
 
-**B. 跨产品依赖**
+     A. 前置状态验证
+        读取每个 slice 平台文件的「前置条件」section 并转译为 grep 规则。例：
+        - 前置："已完成 LoginStore.shared.login()"
+        - 转译：grep "LoginStore\.shared\.login\(", expect: ">= 1"
+        找不到前置调用 → issue: missing_prerequisite，指向对应前置 slice。
 
-检查 `index.yaml` 的 `cross_product_relations`。若本次 capability 在某个 relation 的 slices 列表中，**递归加载关联 slice 的 `verify` 字段**一起跑。
+     B. 跨产品依赖
+        检查 index.yaml 的 cross_product_relations。若本次 capability 在某个
+        relation 的 slices 列表中，递归加载关联 slice 的规则一起跑。
 
-**C. 平台生命周期验证**
+     C. 平台生命周期默认兜底表（仅当 slice 无明确规则时使用，产出 warning 不是 critical）
+        | 平台    | 默认兜底检查 |
+        |---------|--------------|
+        | iOS     | setup/subscribe 应在 viewDidLoad/viewWillAppear；cleanup 应在 viewDidDisappear（非 deinit）；sink 必须 [weak self]；cancellables 必须是存储属性 |
+        | Android | setup 应在 onCreate/onResume；cleanup 应在 onPause/onDestroy；lifecycle-aware 订阅管理 |
+        | Web     | 事件监听应在组件卸载/页面 unload 时清理 |
+        | Flutter | dispose() 中清理订阅；StatefulWidget 的 initState/dispose 对称 |
 
-平台级的生命周期规则**应当由对应 slice 通过 `verify` 字段显式约束**。下表作为兜底参考——**当 slice 没有明确规则时**，apply 按下表跑一组 default check（仅当本次 capability 触及视图层时），产出 `warning` 级别而不是 `critical`：
+        设计意图：兜底表是底线，真正严格的约束应由 slice 在 MUST 里显式声明
+        （这样规则可随 slice 迭代，不硬编码在 verifier 里）。
 
-| 平台 | 默认生命周期兜底检查 |
-|------|--------------------|
-| iOS | `setup`/`subscribe` 应在 `viewDidLoad()` 或 `viewWillAppear()`；`cleanup` 应在 `viewDidDisappear()`（不是 `deinit`）；`sink` 必须 `[weak self]`；`cancellables` 必须是存储属性 |
-| Android | `setup` 应在 `onCreate` / `onResume`；`cleanup` 应在 `onPause` / `onDestroy`；lifecycle-aware 订阅管理 |
-| Web | 事件监听应在组件卸载 / 页面 unload 时清理 |
-| Flutter | `dispose()` 中清理订阅；`StatefulWidget` 的 `initState` / `dispose` 对称 |
-
-> **设计意图**：默认兜底表是"底线"。真正严格的约束应由 slice 的 `verify` 字段承担——这样规则可随 slice 迭代，而不是硬编码在 apply 里。
-
-**D. 清理对称性**
-
-对每一个 `create` / `subscribe` / `sink` 调用，grep 是否有对应的清理操作；若 slice 用 `verify` 显式声明了对称性规则（`type: grep` 配合 pattern 数量相等的 `expect`），以 slice 规则为准；否则用通用的对称性兜底 grep，产出 `warning`。
-
----
+     D. 清理对称性
+        对每一个 create / subscribe / sink 调用，grep 是否有对应的清理操作；
+        若 slice 用 MUST 显式声明了对称性规则（如同时要求 useXxx 与 disposeXxx
+        两个 backtick），以 slice 规则为准；否则用通用对称性兜底 grep，产出 warning。
+-->
 
 ## Phase 3: 编译验证
 

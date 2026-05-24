@@ -339,6 +339,14 @@ slices:
     description: 背景虚化/替换、模型资源与 assetsPath 配置、浏览器支持性检测、预览与保存生效链路
     status: active
 
+  - id: conference/official-roomkit-api
+    name: 官方 RoomKit 适配层 API
+    tags: [official-roomkit, conference-api, conference-object, setWidgetVisible, registerWidget, onWill, setFeatureConfig, createAndJoinRoom, joinRoom, UIKitProvider]
+    platforms: [web]
+    file: slices/conference/official-roomkit-api.md
+    description: 官方 RoomKit 集成模式下 conference 对象的完整 API 签名、枚举定义、调用时序和代码示例（ui_mode=official-roomkit 专用）
+    status: active
+
 # ============================================================
 # Scenarios — 场景组合索引
 # ============================================================

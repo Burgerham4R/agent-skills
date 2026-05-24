@@ -285,7 +285,9 @@ api_docs:                   # [必填] 该平台 API 参考文档链接（至少
 
 ##### 代码生成约束 [必填]
 
-此 section 是给 AI 读的硬性规则，**每一条规则必须自带机器可执行的验证手段**（对应原子一「可 verify」）。规则格式如下（结构化，推荐）：
+此 section 是给 AI 读的硬性规则。**只有 apply 能机械验证的规则才能进 MUST/MUST NOT**——具体什么样的规则算「能机械验证」，见下一节「MUST 规则的维度对齐原则」，必读。
+
+格式示例：
 
 ```markdown
 ### 编译必要条件 [必填]
@@ -297,35 +299,16 @@ api_docs:                   # [必填] 该平台 API 参考文档链接（至少
 
 #### MUST（生成时必须包含）
 
-1. **规则内容** — 违反后果。
-   ```yaml
-   verify:
-     - type: grep
-       in: "Views/**/*.swift"
-       pattern: '\.sink\s*\{\s*\[weak self\]'
-       expect: { op: ">=", value: 1 }
-   ```
+1. **<动作> `符号`** — <违反后果>。
+   **Verify**: 检查是否存在 `符号`。
 
-2. **规则内容** — 违反后果。
-   ```yaml
-   verify:
-     - type: compile
-       expect: { exit_code: 0 }
-     - type: runtime_log
-       trigger: "观众点击申请连麦按钮"
-       pattern: '\[CoGuest\] 申请已发送'
-       expect: { op: "contains" }
-   ```
+2. **<动作> `符号 A`** — <违反后果>。
+   **Verify**: 检查是否存在 `符号 A`。
 
 #### MUST NOT（生成时绝不能出现）
 
-1. **规则内容** — 违反后果。
-   ```yaml
-   verify:
-     - type: not_grep
-       in: "**/*.swift"
-       pattern: '\.failure\b[^}]*openLocalCamera'
-   ```
+1. **不要 <动作> `符号`** — <违反后果>。
+   **Verify**: 检查 `符号` 出现 0 次。
 
 ### 集成检查点 [必填]
 - 是否与项目已有 SDK 初始化冲突
@@ -333,115 +316,91 @@ api_docs:                   # [必填] 该平台 API 参考文档链接（至少
 - 对已有代码的侵入性（新增 vs 修改）
 ```
 
-> **为什么要结构化**：apply skill 在验证代码时会按 `verify.type` 分发到对应的执行器（grep / 编译 / 运行时日志 / 人工）。自由文本 Verify 无法机器消费，apply 只能降级为「人工核对」并在报告中加 `warning: legacy_verify_format` 标注。见下方 **Verify 类型规范**。
+**关键约束**：
 
-##### Verify 类型规范
+- 每条 MUST/MUST NOT 的 `**Verify**:` 字段引用的 backtick 符号 = apply 唯一会 grep 的东西
+- 规则文字描述的所有判断、选择、等价、条件分支，apply **全部不验**——所以这些不要写进 MUST
+- 多 backtick 的规则可以接受，apply 解析为「全部都要出现」（all-of）
 
-每条 MUST / MUST NOT 规则的 `verify` 是一个**数组**（同一条规则可能同时要求静态 grep + 运行时日志）。数组的每一项是一个 verify 对象，字段如下：
+##### MUST 规则的维度对齐原则 [必填阅读]
 
-**公共字段**
+###### 核心原则
 
-| 字段 | 是否必填 | 说明 |
-|------|---------|------|
-| `type` | 必填 | 枚举：`grep` / `not_grep` / `compile` / `runtime_log` / `manual` |
-| `description` | 可选 | 一句话说明这条 verify 在查什么（给人读，不影响执行）|
+> **MUST 规则的语义 = 它的 backtick 符号能验的语义。**
+>
+> 如果你写的规则文字比 backtick 符号能表达的更多，规则就「维度溢出」了——AI 写对了你 grep 不到，AI 写错了你也 grep 不到，verifier 反而把 AI 推向凑字符串。
 
-**按 type 分字段**
+###### 红旗词表：以下写法说明 MUST 写错了
 
-| type | 附加字段 | 含义 |
-|------|---------|------|
-| `grep` | `in`（glob，默认 `**/*`）、`pattern`（正则）、`expect`（见下）| 在 `in` 匹配的文件里搜 `pattern`，命中次数须满足 `expect` |
-| `not_grep` | `in`、`pattern` | 在 `in` 匹配的文件里 `pattern` **必须命中 0 次**；不需要写 `expect` |
-| `compile` | `expect.exit_code`（默认 0） | 触发一次平台编译（命令由 apply 根据 platform 选），exit code 须等于 `expect.exit_code` |
-| `runtime_log` | `trigger`（人话描述的触发动作）、`pattern`（正则或子串）、`expect.op`（`contains` / `match`，默认 `contains`）| 执行 `trigger` 描述的操作后抓日志，按 `pattern` 检查 |
-| `manual` | `description`（必填，替代公共字段）| 无法机器执行，必须人工观察。apply 不跑，只把这条放到 `needs_human_review` 列表 |
+| 红旗词 | 例子 | 为什么是红旗 | 怎么改 |
+|---|---|---|---|
+| **「或 / 任一」** | "出现 `X` 或 `Y`" | grep 一个 ≠ 验了选择 | 拆两条 MUST 各管一个分支；或把「选哪个」移到「最佳实践」/「场景说明」 |
+| **「等价 / 或类似」** | "处理 `ERR_X` 或等价提示" | "等价" 无法机械化，AI 写等价代码 verify 还是 fail | 显式枚举所有可接受的 backtick 写法；或承认是软规则放到「最佳实践」 |
+| **「按业务 / 根据场景」** | "按业务目标选 `X` 或 `Y`" | 业务判断不是 grep 能做的事 | 完全移出 MUST。具体场景写到「代码示例」每个场景一段，让 AI 选示例 copy |
+| **「留给 / 负责」** | "把 X 留给 slice A，把 Y 留给 slice B" | 架构边界没有任何 grep pattern 能验 | 移到「集成检查点」section，作为 AI 读但 apply 不验的引导文字 |
+| **多 backtick 但 Verify 只提一个** | "调 `A()` 后再调 `B()`"，Verify 只检查 `A` | A 出现 ≠ 调用顺序对 | 拆两条 MUST 各管一个 API；调用顺序不能机械验，写到「调用时序」section |
 
-**`expect.op` 取值**（仅 `grep` / `runtime_log` 使用）
+###### 自查三问（写完每条 MUST 之前问自己）
 
-| op | 含义 | `value` 语义 |
-|----|------|------------|
-| `==` | 命中次数正好等于 | 整数 |
-| `>=` | 命中次数大于等于 | 整数 |
-| `<=` | 命中次数小于等于 | 整数 |
-| `>` / `<` | 严格大于 / 小于 | 整数 |
-| `contains` | 日志中出现子串即可 | 字符串（`runtime_log` 默认）|
-| `match` | 日志整行正则匹配 | 正则 |
+1. backtick 里的符号是不是就是 verify 唯一会做的事？规则文字里的其他词能不能删？
+2. 如果 AI 写**等价但不同写法**的代码，verify 会不会误杀？误杀 = 规则太死，要么拆原子要么降级软规则。
+3. 如果 AI 写**只满足 backtick 字符串但语义错**的代码，verify 会不会放过？放过 = 规则太松，应该拆。
 
-**`in` 字段**
+###### 软规则 vs 硬约束
 
-- glob 语法，相对项目根；默认 `**/*`
-- 多个 glob 用数组：`in: ["Views/**/*.swift", "Stores/**/*.swift"]`
-- 常见写法：`Views/**/*.swift`、`src/**/*.{ts,tsx}`、`lib/**/*.dart`
+| 类型 | 写在哪 | apply 行为 | AI 行为 |
+|---|---|---|---|
+| **硬约束**（MUST/MUST NOT） | 「代码生成约束」 | grep backtick，命中失败就 fail | 必须包含/避免符号 |
+| **软规则**（业务选择、架构建议、调用顺序、错误处理建议） | 「最佳实践」「集成检查点」「调用时序」「代码示例」 | 不验，仅作为 AI 上下文 | 阅读后自行判断 |
 
-**每种 type 的最小示例**
+> **重要 ≠ 能机械验证。**
+>
+> 把重要但验不了的规则放进 MUST，会**误杀正确代码 + 训练 AI 凑字符串**——这是 verifier 反向变成攻击面。
+>
+> 重要但不能机械验证的规则，**写到软规则区，靠 AI 阅读 + 反例代码**来引导。
 
-```yaml
-# 1. grep —— 必须出现 N 次
-verify:
-  - type: grep
-    description: "所有 Combine sink 都必须带 [weak self]"
-    in: "Views/**/*.swift"
-    pattern: '\.sink\s*\{\s*\[weak self\]'
-    expect: { op: ">=", value: 1 }
+###### 完整改造示例：room-lifecycle 的失败规则
+
+❌ **改前**（现状写法，触发 AI 凑字符串）：
+
+```
+3. **按业务目标选择 `createAndJoinRoom()` 或 `joinRoom()`** — 房主快速创建并入会、
+   以及无法确认房间是否存在时，都更适合 `createAndJoinRoom()`；只有已知房间已存在
+   时才直接使用 `joinRoom()`。
+   **Verify**: 检查是否把"房主创建并入会""已知房间存在直接加入""存在性未知时尝试
+   进入"这三类路径明确区分。
+
+5. **为密码房和常见入会错误预留业务反馈** — 无 UI 接入时，密码输入、重试和错误
+   提示都需要页面自行承接。
+   **Verify**: 检查加入流程是否处理 `ERR_NEED_PASSWORD`、`ERR_WRONG_PASSWORD`
+   或等价失败提示。
 ```
 
-```yaml
-# 2. not_grep —— 禁止出现的模式
-verify:
-  - type: not_grep
-    description: "不允许在 .failure 分支打开本地设备"
-    in: "**/*.swift"
-    pattern: '\.failure[^}]*openLocalCamera'
+红旗词诊断：「按业务」「或」「等价」全部命中。规则文字承诺的语义远超 backtick 能验的范围。
+
+✅ **改后**：
+
+「代码生成约束」→ MUST：
+```
+3. **必须调用房间进入 API（`createAndJoinRoom` 或 `joinRoom` 至少其一）** — 否则
+   无法进房。
+   **Verify**: 检查 `createAndJoinRoom` 与 `joinRoom` 至少其一出现 ≥1 次。
 ```
 
-```yaml
-# 3. compile —— 跑一次编译看能否通过
-verify:
-  - type: compile
-    description: "CoGuestStore 的 apply 方法第 2 个参数是 Int"
-    expect: { exit_code: 0 }
+「代码示例」→ 增加场景一/二/三，每个场景写完整可 copy 的代码。
+
+「最佳实践」→ 新增软规则段（apply 不验，AI 阅读）：
+```
+- 房主快速创建会议 → 用 createAndJoinRoom（参考场景一）
+- 已知房间已存在 → 用 joinRoom（参考场景二）
+- 不确定房间是否存在 → 用 createAndJoinRoom（参考场景三）
+- 密码房 / 入会错误处理 → 见场景四与「常见错误与场景对照」表
 ```
 
-```yaml
-# 4. runtime_log —— 触发操作后观察日志锚点
-verify:
-  - type: runtime_log
-    description: "申请连麦后主播端能收到事件"
-    trigger: "观众端点击「申请连麦」按钮，等待 3 秒"
-    pattern: '\[CoGuest\] onGuestApplicationReceived'
-    expect: { op: "contains" }
-```
-
-```yaml
-# 5. manual —— 无法机器执行，放到人工 review 队列
-verify:
-  - type: manual
-    description: "主播端 UI 在等待 30 秒后显示『申请超时』文案"
-```
-
-**组合示例（同一规则多重验证）**
-
-```yaml
-# "sink 必须加 [weak self]" 既有静态检查，也有编译兜底
-verify:
-  - type: grep
-    in: "Views/**/*.swift"
-    pattern: '\.sink\s*\{\s*\[weak self\]'
-    expect: { op: ">=", value: 1 }
-  - type: compile
-    expect: { exit_code: 0 }
-```
-
-**过渡期兼容（仅用于存量 slice）**
-
-仍允许旧的自由文本写法：
-
-- `**Verify**: grep -E "\\.sink\\s*\\{\\s*\\[weak self\\]"`
-- `**Verify**: 编译报错 "Cannot find 'XXX' in scope"`
-- `**Verify**: 运行时日志出现 "[CoGuest] 申请已发送，等待主播响应..."`
-- `**Verify**: 人工 — 连麦 30 秒无响应后 UI 显示"申请超时"`
-
-apply skill 对旧格式做**尽力解析**并标注 `warning: legacy_verify_format`。**新建的 slice 必须使用结构化 yaml 格式**；存量 slice 在下一次实质性修改时顺手迁移。
+效果：
+- apply 不再误杀「AI 用 catch 通用错误处理」的正确代码
+- AI 读到「最佳实践」能按业务选 API
+- 业务路径选择即使错了也不会因 verify fail 把 AI 推去凑字符串
 
 ##### 验证矩阵 [必填]
 
@@ -472,6 +431,11 @@ apply skill 对旧格式做**尽力解析**并标注 `warning: legacy_verify_for
 | 2. **静态规则级** | 不跑代码，纯静态扫描/ grep 就能查的规则 | CI / AI 自动 |
 | 3. **运行时级** | 跑起来后通过日志锚点可观察的行为 | AI 半自动 / 人工 |
 | 4. **业务行为级** | 需要人眼看 UI / 硬件状态的业务语义 | 人工 |
+
+> **与 MUST 规则的对应关系**：
+>
+> - 「层级 1 编译级」与「层级 2 静态规则级」是 apply 的**硬约束区域**——这两层的检查项基本对应「代码生成约束」里的 MUST / MUST NOT，apply 自动跑、命中失败会 fail。
+> - 「层级 3 运行时级」与「层级 4 业务行为级」是**软规则区域**——属于运行时观察 / 业务语义校验，apply 不验，需要 AI 半自动或人工跑。这些层级的内容对应「MUST 规则维度对齐原则」里的「软规则」（业务选择、调用顺序、架构边界等机械验证不了的项目）。
 
 **要求**：
 - 每条「代码生成约束」的 MUST/MUST NOT 都应在矩阵中有对应行（层级 1 或 2）
@@ -506,8 +470,9 @@ apply skill 对旧格式做**尽力解析**并标注 `warning: legacy_verify_for
 - [ ] 每段代码都有日志锚点，供「验证矩阵」层级 3 使用
 - [ ] `调用时序`：若涉及多角色异步交互或回调嵌套 ≥3 层，必须画；否则可省
 - [ ] `平台特有注意事项` 至少 1 条，且每条都是「该平台独有 + 不写出来研发会踩坑」
-- [ ] `代码生成约束` 的每条 MUST / MUST NOT 都附 **结构化 `verify:` yaml 块**（见第四节「Verify 类型规范」）；存量旧格式的 `**Verify**: ...` 仅在存量 slice 上允许，新 slice 不得使用
-- [ ] 每条 `verify` 至少有一项 `type ∈ {grep, not_grep, compile, runtime_log}`（`manual` 不能单独存在，必须与至少一项可机检的 verify 搭配）
+- [ ] `代码生成约束` 的每条 MUST / MUST NOT 都使用 **prose + backtick** 格式：`**Verify**: 检查是否存在 \`symbol\``，每条规则的 backtick 符号是 apply 唯一 grep 的目标
+- [ ] 每条 MUST / MUST NOT 通过「自查三问」（见第四节「MUST 规则的维度对齐原则」）
+- [ ] 每条 MUST / MUST NOT 不含「红旗词」（或 / 任一 / 等价 / 按业务 / 根据场景 / 留给 / 负责）；含红旗词的规则要么拆成原子规则，要么下沉到软规则区
 - [ ] `代码生成约束` 的 MUST / MUST NOT 与产品级 ALWAYS / NEVER 不重复（前者管代码结构，后者管运行时行为）
 - [ ] `验证矩阵` 的 4 个层级都有至少 1 行
 - [ ] `验证矩阵` 覆盖了所有 MUST / MUST NOT 规则（每条规则都能在矩阵中找到对应行）

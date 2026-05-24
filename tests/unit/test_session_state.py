@@ -87,7 +87,17 @@ def test_in_scope_true_when_scenario_has_theme():
 
 
 # ---------------------------------------------------------------------------
-# Test 6: in_scope False when scenario is unknown to registry
+# Test 6: in_scope False for official RoomKit mode
+# ---------------------------------------------------------------------------
+
+
+def test_in_scope_false_for_official_roomkit():
+    """official-roomkit uses official components, not meeting-classic hooks."""
+    assert session_state.in_scope(_session(ui_mode="official-roomkit"), REPO_ROOT) is False
+
+
+# ---------------------------------------------------------------------------
+# Test 7: in_scope False when scenario is unknown to registry
 # ---------------------------------------------------------------------------
 
 
@@ -107,7 +117,7 @@ def test_in_scope_false_when_scenario_unknown():
 
 
 # ---------------------------------------------------------------------------
-# Test 7: -complete suffix → True (the live signal)
+# Test 8: -complete suffix → True (the live signal)
 # ---------------------------------------------------------------------------
 
 
@@ -119,7 +129,7 @@ def test_scaffold_complete_true_when_step_ends_with_complete():
 
 
 # ---------------------------------------------------------------------------
-# Test 8: in-progress step → False
+# Test 9: in-progress step → False
 # ---------------------------------------------------------------------------
 
 
@@ -131,7 +141,7 @@ def test_scaffold_complete_false_when_step_does_not_end_with_complete():
 
 
 # ---------------------------------------------------------------------------
-# Test 9: missing field → False (gate stays open by default)
+# Test 10: missing field → False (gate stays open by default)
 # ---------------------------------------------------------------------------
 
 
@@ -144,7 +154,7 @@ def test_scaffold_complete_false_when_field_missing():
 
 
 # ---------------------------------------------------------------------------
-# Test 10: explicit None → False
+# Test 11: explicit None → False
 # ---------------------------------------------------------------------------
 
 
@@ -156,7 +166,7 @@ def test_scaffold_complete_false_when_step_is_none():
 
 
 # ---------------------------------------------------------------------------
-# Test 11: non-string defensive
+# Test 12: non-string defensive
 # ---------------------------------------------------------------------------
 
 

@@ -90,9 +90,18 @@ After the user picks a symptom, immediately check `${CLAUDE_PROJECT_DIR}/.trtc-s
 
 *Intentionally absent. The code-sharing question from the previous version is now inlined into B-Q1's diagnostic response.*
 
+## Fix-write support gate
+
+Diagnosis (B-Q0 triage, B-Q1 symptom tree, error-code lookup, root-cause explanation) runs for **any** (product, platform). Generating fix code is gated on (product, platform) only — scenario does not apply here, since fixes are slice/error-level edits, not scenario-level scaffolding:
+
+- `(product, platform) == (conference, web)` → write the fix as code (full Fix delivery steps 1–4 below).
+- Otherwise → deliver only steps 1–3 (explain why in prose, point at the fix conceptually, reference the slice ALWAYS/NEVER rule). **Skip step 4** — no Edit/Write to user files, no full corrected-code block. Close with the relevant official docs link from `${CLAUDE_PLUGIN_ROOT}/llms/{product}/{platform}.txt` so the user can apply the fix using the official documentation.
+
+Source of truth: `reference/supported-matrix.md` → Troubleshoot path row.
+
 ## Fix delivery
 
-When the root cause is identified:
+When the root cause is identified, run the Fix-write support gate above to decide whether step 4 executes.
 
 1. Explain **why** it's broken (one sentence).
 2. Show the **fix** (code diff or complete corrected code).
