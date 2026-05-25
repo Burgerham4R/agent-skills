@@ -1,9 +1,0 @@
-# Tencent RTC Chat — Unreal Engine (Game Solution)
-
-> Chat documentation for the Unreal Engine (Core SDK only; no UIKit). Every linked page has a `.md` twin (append `.md` to the URL) that returns raw markdown.
-
-## Core SDK
-
-### SDK Integration
-
-- [SDK Integration](https://trtc.io/document/46262.md)

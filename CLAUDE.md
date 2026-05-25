@@ -60,10 +60,6 @@ ai-integration/
 │   ├── slices/                           #   原子能力片段（按产品 → 平台组织）
 │   └── scenarios/                        #   场景组合（多 Slice 串联的完整流程）
 │
-├── 🔵 llms.txt + llms/                   # llms.txt 标准模板（供外部 LLM 发现文档）
-│   ├── {product}.txt                     #   产品概述 + 平台链接（如 live.txt, conference.txt）
-│   └── {product}/{platform}.txt          #   平台概述 + 官方文档链接（如 live/ios.txt, conference/web.txt）
-│
 ├── 🔘 ai-instructions/                   # 工具无关的指令源（用户拿派生产物，不读源）
 │   └── ui-mode.md                        #   渲染到 CLAUDE.md / AGENTS.md / .cursor/rules/
 │
@@ -95,11 +91,11 @@ Slice 分为两层：
 
 **三级结构**：`llms.txt`（产品索引）→ `{product}.txt`（产品概述 + 平台链接）→ `{product}/{platform}.txt`（平台概述 + 官方文档链接）
 
-**定位**：仓库中的文件是**内容规范和初始模板**，最终由 trtc.io 文档站构建流程自动生成并部署到 CDN。文档站团队根据此模板编写生成脚本，从文档源（MDX/Markdown）自动产出 llms.txt 系列文件，确保文档更新时自动同步。
+**部署位置**：已上线至 `https://trtc.io/llms/`，本地仓库不再保留副本。Skills 通过 `Bash(curl -s https://trtc.io/llms/{product}.txt)` 和 `Bash(curl -s https://trtc.io/llms/{product}/{platform}.txt)` 远程读取。
 
 **与 knowledge-base 的关系**：
 - `knowledge-base/`（slices + scenarios）= 面向内部 AI Skills 的结构化知识库，包含详细的代码示例、排障指南
-- `llms/` = 面向外部 LLM 的轻量索引，仅包含概述和指向 trtc.io 官方文档的链接
+- `trtc.io/llms/` = 面向外部 LLM 的轻量索引，仅包含概述和指向 trtc.io 官方文档的链接
 
 ### 三层架构
 ```
