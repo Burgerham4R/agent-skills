@@ -368,6 +368,23 @@ def main(argv: list[str] | None = None) -> int:
                 f"apply pass: {rules_checked} MUST rules satisfied for "
                 f"{args.slice_id} — auto-advanced ({policy}); next state: {new_state}"
             )
+            # POST-LOOP CHECKLIST: when all slices are done, remind the AI
+            # to execute Step 4 and Step 4.5 from topic/SKILL.md.
+            if new_state == "all_done":
+                print("")
+                print("=" * 60)
+                print("ALL SLICES COMPLETE — POST-LOOP CHECKLIST (mandatory)")
+                print("=" * 60)
+                print("The slice loop is finished, but the topic flow is NOT done.")
+                print("You MUST now execute these steps from topic/SKILL.md:")
+                print("")
+                print("  □ Step 4: Present the verification checklist to the user")
+                print("  □ Step 4.5: Offer runtime verification & telemetry")
+                print("             (ask consent if telemetry.opted_in is null)")
+                print("")
+                print("Do NOT output a final summary and stop. Read topic/SKILL.md")
+                print("Step 4 and Step 4.5 sections and execute them now.")
+                print("=" * 60)
             return 0
         print(f"apply pass: {rules_checked} MUST rules satisfied for {args.slice_id}")
         return 0

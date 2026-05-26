@@ -1,0 +1,13 @@
+{
+  "name": "trtc-topic-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runtime telemetry bridge for TRTC topic skill (Web platform)",
+  "type": "module",
+  "scripts": {
+    "start": "node telemetry-bridge.mjs"
+  },
+  "dependencies": {
+    "puppeteer": "^23.0.0"
+  }
+}

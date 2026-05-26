@@ -99,6 +99,29 @@ is set by onboarding when the user picks scope; **do not change it mid-flight**.
 
 ---
 
+## Post-loop: `all_done` is NOT the end
+
+**CRITICAL**: When `apply.py` prints `next state: all_done`, the slice loop is
+finished — but the **topic flow is not done**. `all_done` means "all code steps
+passed", not "task complete, output summary and stop".
+
+After `all_done` you MUST continue to:
+
+1. **Step 4 (Verification Checklist)** — present the scenario's verification
+   items to the user and ask them to confirm each one works.
+2. **Step 4.5 (Runtime Verification & Telemetry)** — offer to run the app and
+   automatically verify SDK events fire correctly (opt-in consent required if
+   `telemetry.opted_in` is null in the session).
+
+`apply.py` prints a `POST-LOOP CHECKLIST` block when it reaches `all_done` as
+a physical reminder. **Do not ignore that block.**
+
+**Self-check signal**: If your next action after seeing `all_done` is to write
+a "project complete" summary without first executing Step 4 — STOP, you are
+skipping mandatory steps. Go back to `topic/SKILL.md` §Step 4.
+
+---
+
 ## Related documents
 
 - `topic/SKILL.md` — high-level scenario walkthrough flow, references this guide

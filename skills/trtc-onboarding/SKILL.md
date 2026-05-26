@@ -154,7 +154,14 @@ ui_mode: null                   # official-roomkit | full-ui | headless | null
 # Root-level field, alongside ui_mode and the rest of the session schema.
 auto_advance_policy: pause_on_failure   # pause_on_failure | pause_each | null
 
-# --- 对话恢复辅助 ---
+# --- Runtime Telemetry ---
+telemetry:
+  opted_in: null                # true | false | null (null = not yet asked)
+  last_run_at: null             # ISO timestamp of last telemetry run
+  total_runs: 0                 # number of telemetry collection runs
+
+# --- Conversation Resume Helper ---
+
 last_recap: "Live on iOS, adding gift to existing project, at step A2.3"
 ```
 
