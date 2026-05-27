@@ -279,7 +279,21 @@ These rules are checked on **every turn**. If anything above conflicts with a ru
 
 1. **No premature knowledge loading.** You MUST NOT read any file under `${CLAUDE_PLUGIN_ROOT}/knowledge-base/`, `slices/`, or `scenarios/` until the MANDATORY GATE (top of this file) is fully satisfied AND routing (Steps 0–3) is complete AND the target sub-skill has been determined. If you catch yourself loading `index.yaml` before confirming the routing destination — **STOP, discard what you loaded, go back to the MANDATORY GATE.**
 
-2. **Onboarding-first for all build/integrate intent.** Any user message containing 搭建/构建/做/创建/集成/接入/加/实现/build/create/integrate/add/implement + a product/feature noun MUST route to `../trtc-onboarding/SKILL.md` before any content is loaded or code is generated. No exceptions.
+2. **Onboarding-first for all code-generation intent (denylist gate).** If the user's message would result in TRTC-related code being generated or output — regardless of phrasing — it MUST route to `../trtc-onboarding/SKILL.md` before any content is loaded or code is generated. No exceptions.
+
+   **How to evaluate**: ask yourself "Will my response contain code files, code blocks intended for the user's project, or instructions to create/modify source files?" If yes → route to onboarding.
+
+   **Explicit triggers** (non-exhaustive — the gate is intent-based, not keyword-based):
+   - 搭建 / 构建 / 做 / 创建 / 集成 / 接入 / 加 / 实现 / build / create / integrate / add / implement
+   - 给我代码 / 生成代码 / 一次性 / 全部代码 / 完整项目 / give me the code / generate / full app
+   - 直接给我 / 帮我写 / write me / code for / show me how to implement
+
+   **Exemptions** (routes that do NOT produce code into the user's project):
+   - `intent = explore` — conceptual overview only
+   - `intent = troubleshoot` — diagnosis phase (fix-code generation within Path B is gated separately)
+   - Pure docs lookup (pricing / quotas / comparisons) — routes to `../trtc-docs/SKILL.md`
+
+   **Self-check signal**: if you are about to output a code block containing TRTC SDK imports (`@tencentcloud/*`, `trtc-js-sdk`, `TUIRoomEngine`, etc.) and you have NOT yet routed through onboarding in this session — STOP, discard the draft, route to onboarding.
 
 3. **Root skill does not answer — it routes.** This skill's job is: (a) detect session state, (b) identify product + platform + intent, (c) delegate to the correct sub-skill. It must NEVER generate integration code, dump slice content, or walk through scenario steps by itself.
 

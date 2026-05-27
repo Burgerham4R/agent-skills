@@ -101,21 +101,41 @@ Ask when `intent = integrate-scenario`, or when the user finished Path A1 of a p
 
 Question text: "What kind of experience are you building?"
 
-Options are **product-dependent**. Pull the concrete scenario list from `${CLAUDE_PLUGIN_ROOT}/knowledge-base/index.yaml` scenarios whose `product` matches the identified product. The sets below are reference — always cross-check against the current index.
-
-**Caveat for v1**: `index.yaml` lists the canonical set of scenarios; the user-facing menu MUST additionally filter against `reference/supported-matrix.md` Conference Scenarios ✅ list. Index ≠ menu — other `status: active` conference scenarios exist as content but are not yet exposed as integration entry points.
-
 **If `product = conference`:**
+
+Use exactly the following 2 options. Do NOT read index.yaml to construct this list — the supported scenarios are defined here and aligned with `reference/supported-matrix.md`.
+
+**Scenario matching rule (MANDATORY — run before showing options):**
+
+When the user has already described a specific use case (e.g. "在线教育", "online classroom", "远程培训", "客户面试") that does not exactly match a supported scenario name:
+
+1. Acknowledge what they asked for
+2. State that this specific use case does not have a dedicated scenario template
+3. Show the supported scenarios with their scope description (from the option table below)
+4. Recommend the best fit — state which one and why it's the closest match
+5. Let the user confirm
+
+**The key rules:**
+- NEVER silently map an unsupported scenario name to a supported one without explaining
+- NEVER present the medical template as suitable for non-medical use cases (it copies a complete medical-specific project)
+- ALWAYS show both options with enough context for the user to make an informed choice
+- If the user's described scenario clearly maps to one option (e.g. "开个会" → 通用会议), you can recommend more directly but still show both options
+- Do NOT invent features or promise capabilities that are not in the scenario — only describe what the scenario actually provides
+
+**Question text** (use when user has NOT described a specific use case, or after the matching explanation above):
+
+"What kind of experience are you building?"
 
 | # | Option | Fills |
 |---|--------|-------|
-| 1 | General meeting / 通用会议 (default for most meeting use cases) | `scenario = general-conference` |
-| 2 | Telemedicine / 1v1 视频问诊 (medical online consultation) | `scenario = 1v1-video-consultation` |
-| 3 | I want to pick individual features myself | fall through to A2-Q1 |
+| 1 | General meeting / 通用会议 (multi-party video meeting — fits most use cases including online education, remote training, team collaboration) | `scenario = general-conference` |
+| 2 | Telemedicine / 1v1 视频问诊 (medical consultation template — ONLY for healthcare scenarios, copies a complete medical project) | `scenario = 1v1-video-consultation` |
 
-(3 options; "Type something" is auto-provided by AskUserQuestion's Other — do NOT add it as an explicit option.)
+(2 options only. "Type something" is auto-provided by AskUserQuestion's Other — do NOT add it as an explicit option. If free-text input maps to an unsupported scenario, trigger Integration scenario gate.)
 
 **Free-text handling**: if the user's free text maps to a hidden scenario (e.g. "webinar", "研讨会", "multidoctor", "会诊"), trigger the Integration scenario gate recap from `onboarding/SKILL.md` → `### Integration scenario gate` instead of falling through to A2-Q1.
+
+**After user selects a conference scenario** → proceed immediately to A2-Q0.5 (Conference integration mode). Do NOT skip A2-Q0.5.
 
 **If `product = live`:**
 
@@ -198,7 +218,7 @@ When the medical condition above is NOT met (i.e. `scenario != 1v1-video-consult
 
 | # | Option | Fills | Next |
 |---|--------|-------|------|
-| 1 | Official UI (recommended: use the official meeting components for fast integration, with full meeting UI out of the box — video, toolbar, member list, chat, etc. Tune buttons, business widgets, click interceptors, share links, and layouts through official APIs) | `ui_mode = official-roomkit` | hand off to `../../trtc-topic/SKILL.md` (Read) with official-roomkit spec |
+| 1 | Official UI (recommended: use the official meeting components for fast integration, with full meeting UI out of the box — video, toolbar, member list, chat, etc. Tune buttons, business widgets, click interceptors, share links, and layouts through official APIs) | `ui_mode = official-roomkit` | execute official-roomkit fast path (no topic handoff) |
 | 2 | Business logic only (headless composables / stores / types; you write your own UI — good for projects that already have a design system) | `ui_mode = headless` | hand off to `../../trtc-topic/SKILL.md` (Read) with headless spec |
 
 (2 options; "Type something" is auto-provided by AskUserQuestion's Other — do NOT add it as an explicit option per Global rule #2.)
@@ -219,6 +239,43 @@ When a scenario is chosen:
 0. **Terminal medical-template guard.** If `scenario = 1v1-video-consultation`
    and `ui_mode = medical-template`, STOP here and execute the Medical template
    copy flow above. Do not run the following topic handoff steps.
+
+**Branch by `ui_mode`:**
+
+### If `ui_mode = official-roomkit` (fast path — no topic, no state machine)
+
+Official RoomKit mode does NOT hand off to topic. The official component
+packages all 16 capabilities internally — there is no per-slice code to
+generate. Onboarding handles the entire generation inline:
+
+1. **Read these files (and only these):**
+   - `${CLAUDE_PLUGIN_ROOT}/knowledge-base/slices/conference/web/official-roomkit-api.md` — complete API signatures, calling sequence, code example, MUST/MUST NOT
+   - `${CLAUDE_PLUGIN_ROOT}/knowledge-base/slices/conference/web/official-roomkit-login-ui.md` — login page UI structure and styling constraints
+   - `${CLAUDE_PLUGIN_ROOT}/skills/trtc-onboarding/reference/mcp-usersig-generation.md` — UserSig credential protocol
+
+2. **Generate the project files in one shot:**
+   - Login page (collect/pre-fill sdkAppId, userId, userSig per the MCP protocol)
+   - Meeting room page (mount `ConferenceMainView`/`ConferenceMainViewH5` inside `UIKitProvider`, wire `conference.*` API calls)
+   - Router config (login → meeting transition)
+   - Any scenario-specific customizations (e.g., `setWidgetVisible` to hide/show widgets relevant to the chosen scenario)
+
+3. **Run one compliance check** against `official-roomkit-api.md`'s MUST/MUST NOT rules. No need for the full apply pipeline — just verify:
+   - No `SecretKey` / `crypto-js` / `pako` in client code
+   - `conference.login()` before room operations
+   - `setWidgetVisible` / `registerWidget` / `onWill` registered after login, before joinRoom
+   - `setFeatureConfig({ shareLink })` after joinRoom succeeds
+   - Cleanup functions collected and called on ROOM_LEAVE + ROOM_DISMISS
+
+4. **Save session:** `current_step = 'official-roomkit-done'`, `status = completed`.
+
+5. **Do NOT:**
+   - Read any other slice file (room-lifecycle.md, device-control.md, etc.)
+   - Hand off to `../../trtc-topic/SKILL.md`
+   - Run the state machine (init_slice_queue, next_slice, etc.)
+   - Run `trtc_prepare_ui.py` or `trtc_verify_ui.py`
+   - Ask A2-Q0.6 (auto-advance policy) — irrelevant without a slice loop
+
+### If `ui_mode = headless` (topic path — state machine)
 
 1. **Handoff to `../../trtc-topic/SKILL.md` via Read.** Read `${CLAUDE_PLUGIN_ROOT}/skills/trtc-topic/SKILL.md` and execute its flow. (Plain Read is the current handoff convention — the §3.5 cross-skill `Skill()` tool handoff was walked back. The real constraints that prevent topic from being silently bypassed live in PreToolUse / Stop hooks and the on-disk state machine, not in how SKILL.md is loaded — so plain Read is sufficient.)
 

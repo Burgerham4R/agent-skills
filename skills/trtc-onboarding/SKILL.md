@@ -454,14 +454,24 @@ Question text: "Which platform are you building on?"
 | 5 | Electron (desktop) | `platform = electron` |
 | 6 | Type something | free-text |
 
-**Integration intent narrowing**: when `intent ∈ {integrate-scenario, integrate-feature, expand}`, collapse this question to only 2 options (within AskUserQuestion's ≤4 limit):
+**Integration intent narrowing**: when `intent ∈ {integrate-scenario, integrate-feature, expand}`, replace the full platform list with the following options:
 
 | # | Option | Fills |
 |---|--------|-------|
-| 1 | Web (React / Vue / plain JS) | `platform = web` |
-| 2 | Other platform — coming soon | trigger Integration platform gate recap |
+| 1 | Web (Vue3) | `platform = web` |
+| 2 | iOS — coming soon | trigger Integration platform gate recap |
+| 3 | Android — coming soon | trigger Integration platform gate recap |
+| 4 | Flutter / Electron — coming soon | trigger Integration platform gate recap |
 
 "Type something" is auto-provided by AskUserQuestion's Other — do NOT add it as an explicit option (Global rule #2). For all other intents (`demo`, `troubleshoot`, `explore`), keep the original 5-platform list above.
+
+**⚠️ Platform question self-check (mandatory when `platform = null`):**
+
+When `platform` is null/unknown AND `intent ∈ {integrate-scenario, integrate-feature, expand}`:
+- You MUST ask Q3. Do NOT auto-select any platform, even if only one is currently supported for that product.
+- "Only one platform is supported" ≠ "no need to ask." The question serves two purposes: (1) explicit user confirmation of platform choice, (2) informing users that other platforms are coming soon.
+- The option narrowing above (which platforms to show, which to mark coming soon) is product-dependent. The requirement to ask is not — it applies to ALL products.
+- Signal: if you are about to set `platform` in the session without the user having selected it (from project scan inference OR from Q3 response), you are violating this gate. STOP and show Q3.
 
 ---
 
@@ -475,6 +485,23 @@ Each path opens with a one-sentence recap of the current session state and then 
 | **A2** Direct Integration | `integrate-scenario`, `integrate-feature` | Co-developer mode — scan the project, write code following slice-defined best practices. Every step silently runs through `../trtc-apply/SKILL.md` as an internal quality gate before being declared done. Users never see apply. | `reference/path-a2-integrate.md` |
 | **B** Troubleshooting | `troubleshoot`, or review-intent triage triggered by Hard rule #1 | Debugger mode — walk the diagnostic tree, find root cause, fix. Starts with B-Q0 triage (A/B/C/D/E intent classification) to route review-wording users correctly. | `reference/path-b-troubleshoot.md` |
 | **C** Feature Expansion | `expand` | Advisor + Implementer — auto-detect existing TRTC setup, recommend the next feature, then delegate step-by-step implementation to Path A2's flow. | `reference/path-c-expand.md` |
+
+**⚠️ Stage 2 entry self-check (mandatory — run before loading any reference/path-*.md):**
+
+Before you `Read` any `reference/path-*.md` file, verify in this conversation:
+
+1. Did you show the Stage 1A recap card (the "Here's what I picked up: …" block + "Does this look right?" question)?
+2. Did the user respond with an explicit confirmation (option 1 "Looks good" / equivalent affirmation), a correction (option 2), or free-text that you re-processed through Stage 1?
+
+| Self-check result | Action |
+|---|---|
+| Yes — user confirmed or corrected, and Stage 1 is resolved | Proceed to step 1 below |
+| Recap shown, user hasn't responded yet | STOP. Wait for the user's response. Do NOT load any path file. |
+| Recap was never shown (you inferred everything and skipped straight here) | STOP. Go back to Branch 1A and show the recap card. Do NOT load any path file. |
+
+**Signal**: if your next action is `Read reference/path-a1-demo.md` or `reference/path-a2-integrate.md` or `reference/path-b-troubleshoot.md` or `reference/path-c-expand.md`, and you cannot point to a user message in this conversation that responded to the recap card — you are violating this gate. Discard your current plan and show the recap first.
+
+**Exemption**: session reload (§ "On reload" — `status = active/paused`, file fresh) skips Stage 0 and Stage 1 entirely. In that case the "Picking up where we left off" message + user confirmation replaces the recap card. This self-check does not apply to reload flows.
 
 **How to use this table**:
 
