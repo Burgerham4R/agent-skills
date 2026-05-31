@@ -10,23 +10,52 @@ You can use it to build scenarios like video conferencing, live streaming rooms,
 
 ## Installation
 
-**Claude Code / CodeBuddy**
+**Claude Code**
 
 ```bash
-/plugin install trtc-agent-skills
+# Step 1 — add the TRTC plugin marketplace
+/plugin marketplace add Tencent-RTC/agent-skills
+
+# Step 2 — install the plugin
+/plugin install trtc-agent-skills@trtc-marketplace
+
+# Step 3 — activate without restarting
+/reload-plugins
 ```
 
 **Cursor**
 
+Clone the repo and symlink it into Cursor's local plugin directory:
+
 ```bash
-/add-plugin Tencent-RTC/agent-skills
+git clone https://github.com/Tencent-RTC/agent-skills.git
+ln -s "$(pwd)/agent-skills" ~/.cursor/plugins/local/trtc-agent-skills
 ```
+
+Then in Cursor run **`Cmd+Shift+P`** → `Reload Window` (or restart Cursor).
 
 **Codex CLI**
 
 ```bash
+# Step 1 — add the TRTC plugin marketplace
+codex plugin marketplace add Tencent-RTC/agent-skills
+
+# Step 2 — open the plugin browser, search "trtc-agent-skills" and install
+# Run inside Codex CLI:
 /plugins
-# Search "trtc-agent-skills" → Install
+```
+
+**CodeBuddy**
+
+```bash
+# Step 1 — add the TRTC plugin marketplace
+/plugin marketplace add Tencent-RTC/agent-skills
+
+# Step 2 — install the plugin
+/plugin install trtc-agent-skills@trtc-marketplace
+
+# Step 3 — activate without restarting
+/reload-plugins
 ```
 
 ## Using with MCP
