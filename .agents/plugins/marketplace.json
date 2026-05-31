@@ -1,7 +1,7 @@
 {
   "name": "trtc-marketplace",
   "interface": {
-    "displayName": "TRTC AI Integration"
+    "displayName": "TRTC Agent Skills"
   },
   "plugins": [
     {
