@@ -22,14 +22,28 @@ script, malformed stdin, dispatch key unknown), we exit 0 silently so a
 broken adapter never blocks the user's workflow.
 
 Cursor event mapping (see hooks-cursor.json):
-  sessionStart      -> trtc-prepare-ui
-  beforeReadFile    -> gate-slice-read
-  preToolUse        -> gate-slice-write       (filtered to Write/Edit inside)
-  afterFileEdit     -> verify-ui-post-write, verify-slice-must
-  sessionEnd        -> stop-apply-evidence, trtc-verify-ui, verify-apply-project
-                       (Cursor's documented `stop` event does not actually fire
-                        as of 2026-06; sessionEnd is the closest reliable
-                        signal that a Cursor agent session has truly ended.)
+  sessionStart        -> trtc-prepare-ui
+  beforeReadFile      -> gate-slice-read
+  preToolUse          -> gate-slice-write       (filtered to Write/Edit inside)
+  afterFileEdit       -> verify-ui-post-write, verify-slice-must
+  afterAgentResponse  -> stop-apply-evidence, trtc-verify-ui, verify-apply-project
+                         (Claude Code's `Stop` event fires per agent loop
+                          iteration end — the same semantic as Cursor's
+                          `afterAgentResponse`. Cursor's documented `stop`
+                          event was verified to never fire as of 2026-06,
+                          so we use afterAgentResponse instead.
+
+                          IMPORTANT: Cursor treats afterAgentResponse as a
+                          pure observer event. Our deny envelope is
+                          received and logged in Cursor's Hooks Output
+                          panel ("Hook 1 blocked action") but does NOT
+                          surface to the user (no chat warning) or to the
+                          AI (no self-correction). Tested with
+                          user_message and followup_message fields — both
+                          ignored. This is a Cursor platform limitation,
+                          not an adapter issue. Until Cursor implements
+                          enforcement on afterAgentResponse, the 3
+                          end-of-task guardrails act as audit logs only.)
 
 To enable verbose tracing during development, set the env var
 TRTC_HOOK_DEBUG_LOG=/path/to/file.log; see _dbg() below. The default is
@@ -130,17 +144,35 @@ def _translate_payload(key: str, cursor: dict) -> dict:
         file_path = cursor.get("file_path") or cursor.get("filePath")
         return {"tool_name": "Edit", "tool_input": {"file_path": file_path}}
 
-    # CLI-only events (sessionStart, sessionEnd) get empty stdin — they read
-    # state from session files and env vars, not stdin.
+    # CLI-only events (sessionStart, afterAgentResponse) get empty stdin —
+    # they read state from session files and env vars, not stdin.
     return {}
 
 
 def _emit_cursor_deny(message: str) -> None:
-    """Cursor deny protocol: JSON on stdout + exit 2."""
+    """Cursor deny protocol: JSON on stdout + exit 2.
+
+    Fields populated:
+      - permission: "deny" — tells Cursor this action should be blocked.
+      - user_message: surfaced in Cursor's UI when the platform supports it
+        on the current event. Verified to be ignored on afterAgentResponse
+        (Cursor only logs the block in the Output panel there); honored on
+        preToolUse / beforeReadFile.
+      - agent_message: shown to the agent so it can self-correct on hooks
+        that run before the agent's loop ends (preToolUse, beforeReadFile).
+
+    Note: `followup_message` was tested and is NOT honored on
+    afterAgentResponse (Cursor 3.4.20). Per Cursor docs it's only meaningful
+    on the `stop` event, which itself does not fire in current Cursor
+    versions — so there's no reliable channel to make Cursor auto-submit a
+    correction message back to the agent after it has already responded.
+    """
     _dbg(f"  EXIT=2 (deny) message={message[:160]!r}")
+    msg = message or "Blocked by TRTC guardrail."
     payload = {
         "permission": "deny",
-        "agent_message": message or "Blocked by TRTC guardrail.",
+        "user_message": msg,
+        "agent_message": msg,
     }
     sys.stdout.write(json.dumps(payload))
     sys.stdout.flush()

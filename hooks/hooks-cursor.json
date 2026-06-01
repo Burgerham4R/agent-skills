@@ -24,7 +24,7 @@
         "command": "python3 ./hooks/cursor-adapter.py verify-slice-must"
       }
     ],
-    "sessionEnd": [
+    "afterAgentResponse": [
       {
         "command": "python3 ./hooks/cursor-adapter.py stop-apply-evidence"
       },

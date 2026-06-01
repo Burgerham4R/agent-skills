@@ -270,7 +270,12 @@ class TestExitCodeMapping(CursorAdapterTestBase):
 
         envelope = json.loads(result.stdout)
         self.assertEqual(envelope["permission"], "deny")
+        # Both user-facing and agent-facing messages should be set so Cursor
+        # can surface the warning in whichever channel the current event
+        # supports (preToolUse blocks the AI; afterAgentResponse logs to
+        # the Output panel and may surface user_message).
         self.assertIn("Slice read out of bounds", envelope["agent_message"])
+        self.assertIn("Slice read out of bounds", envelope["user_message"])
 
     def test_inner_exit_1_also_maps_to_deny(self):
         # verify_slice_must_rules.py and verify_apply_project.py exit 1 on
