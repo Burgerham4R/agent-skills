@@ -33,15 +33,7 @@
 git clone https://github.com/Tencent-RTC/agent-skills.git ~/.cursor/plugins/local/trtc-agent-skills
 ```
 
-然后按 **`Cmd+Shift+P`**（Mac）/ **`Ctrl+Shift+P`**（Windows/Linux）→ 输入 `Reload Window` 回车（或直接重启 Cursor）。打开 Cursor Settings → Hooks 确认 5 个事件（`sessionStart`、`beforeReadFile`、`preToolUse`、`afterFileEdit`、`stop`）已注册。
-
-> **Cursor 旧版本（< 3.7.x）** 不会自动加载插件自带的 hooks。如果 Reload 之后 Settings → Hooks 还是空的，再跑下面这条命令、再 reload 一次即可：
->
-> ```bash
-> ln -sf ~/.cursor/plugins/local/trtc-agent-skills/hooks/hooks-cursor.json ~/.cursor/hooks.json
-> ```
->
-> 如果你的 `~/.cursor/hooks.json` 已经被其他工具占用了，**不要直接 symlink 覆盖**，请把插件 hooks 文件里的事件手动合并到现有的 `~/.cursor/hooks.json` 里。
+然后按 **`Cmd+Shift+P`**（Mac）/ **`Ctrl+Shift+P`**（Windows/Linux）→ 输入 `Reload Window` 回车（或直接重启 Cursor）。
 
 **Codex CLI**
 
