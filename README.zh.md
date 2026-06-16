@@ -10,56 +10,7 @@
 
 ---
 
-## 安装
-
-**Claude Code**
-
-```bash
-# 第一步 — 添加 TRTC 插件市场
-/plugin marketplace add Tencent-RTC/agent-skills
-
-# 第二步 — 安装插件
-/plugin install trtc-agent-skills@trtc-marketplace
-
-# 第三步 — 无需重启，直接激活
-/reload-plugins
-```
-
-**Cursor**
-
-克隆仓库并安装到 Cursor 本地插件目录：
-
-```bash
-git clone https://github.com/Tencent-RTC/agent-skills.git ~/.cursor/plugins/local/trtc-agent-skills
-```
-
-然后按 **`Cmd+Shift+P`**（Mac）/ **`Ctrl+Shift+P`**（Windows/Linux）→ 输入 `Reload Window` 回车（或直接重启 Cursor）。
-
-**Codex CLI**
-
-```bash
-# 第一步 — 添加 TRTC 插件市场
-codex plugin marketplace add Tencent-RTC/agent-skills
-
-# 第二步 — 在 Codex CLI 中打开插件浏览器：
-/plugins
-# 选择 "TRTC Agent Skills" 标签页 → 选择 trtc-agent-skills → 按 Enter 安装
-```
-
-**CodeBuddy CLI**
-
-```bash
-# 第一步 — 添加 TRTC 插件市场
-/plugin marketplace add Tencent-RTC/agent-skills
-
-# 第二步 — 安装插件
-/plugin install trtc-agent-skills@trtc-marketplace
-
-# 第三步 — 无需重启，直接激活
-/reload-plugins
-```
-
-### 通过 npx 安装（任意 IDE，无需插件市场）
+### 通过 npx 安装
 
 如果你所在的 IDE 没有插件市场，或者你希望把安装范围限定在某个具体项目里，可以用 npx 安装器。在项目根目录执行：
 
