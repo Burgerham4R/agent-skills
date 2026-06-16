@@ -210,91 +210,75 @@ slices:
   - id: conference/login-auth
     name: 登录与鉴权
     tags: [login, auth, SDKAppID, UserID, UserSig, session, multi-device]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/login-auth.md
+    platforms: [web]
+    file: slices/conference/web/login-auth.md
     description: 统一登录态、SDKAppID/UserID/UserSig 鉴权、登录失效/会话过期/多端顶替处理
     status: active
 
   - id: conference/prejoin-check
     name: 入会前设备检查
     tags: [prejoin, device-check, camera, microphone, speaker, preview, selftest]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/prejoin-check.md
+    platforms: [web]
+    file: slices/conference/web/prejoin-check.md
     description: 摄像头/麦克风/扬声器的会前检测与本地预览，完成设备自检与降级准备
     status: active
 
   - id: conference/room-lifecycle
     name: 房间创建、加入、离开与结束
     tags: [room, lifecycle, create, join, leave, end]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/room-lifecycle.md
+    platforms: [web]
+    file: slices/conference/web/room-lifecycle.md
     description: 会议从创建、加入、离开到结束的主链路，统一承接即时会议发起、加入已有会议与退场收口
     status: active
 
   # ---- Conference: 会议骨架 ----
 
-  - id: conference/room-config
-    name: 会议配置与准入规则
-    tags: [config, roomId, password, default-rules, moderation-template]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/room-config.md
-    description: 会议主题、roomId、密码、创建前一次性确定的默认全员规则/初始会控模板
-    status: active
-
   - id: conference/video-layout
     name: 视频布局
     tags: [layout, RoomView, layoutTemplate, participantViewUI, grid, sidebar, mobile-layout, screen-share]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/video-layout.md
+    platforms: [web]
+    file: slices/conference/web/video-layout.md
     description: 视频区域渲染、布局模板切换、主画面选择、共享突出展示、挂件扩展与移动端布局适配
     status: active
 
   - id: conference/room-schedule
     name: 预约会议
     tags: [schedule, reservation, future-meeting, reminder, list]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/room-schedule.md
+    platforms: [web]
+    file: slices/conference/web/room-schedule.md
     description: 未来会议的创建、更新、取消、列表查询与到点提醒；到点入会由 room-lifecycle 接管
     status: active
 
-  - id: conference/room-invite
-    name: 会中邀请入会
-    tags: [invite, signaling, accept, reject, timeout, multi-device]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/room-invite.md
-    description: 会议进行中向房外在线用户发起实时邀请，处理接受/拒绝/超时/多设备收口等邀请信令流程
+  - id: conference/room-call
+    name: 会中呼叫
+    tags: [call, signaling, accept, reject, timeout, multi-device]
+    platforms: [web]
+    file: slices/conference/web/room-call.md
+    description: 会议进行中向房外在线用户发起实时呼叫，处理接受/拒绝/超时/多设备收口等呼叫信令流程
     status: active
 
   # ---- Conference: 治理与互动 ----
   - id: conference/participant-list
     name: 参会人列表与状态
     tags: [participant, list, role, speaking, pagination, sync]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/participant-list.md
+    platforms: [web]
+    file: slices/conference/web/participant-list.md
     description: 参会人列表展示与同步，包括角色、发言态、音视频状态、业务扩展字段与分页加载
     status: active
 
   - id: conference/participant-management
     name: 参会人管理与角色治理
     tags: [kick, admin, role, transfer, invite-permission]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/participant-management.md
-    description: 踢人、设/撤管理员、转移角色、角色显隐、邀请入口的权限约束与成员联动
-    status: active
-
-  - id: conference/room-moderation
-    name: 会议会控与秩序管理
-    tags: [moderation, mute-all, disable-camera, disable-chat, disable-share, per-user-control]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/room-moderation.md
-    description: 会议进行中对全员/单人的禁麦、禁摄、禁聊、禁共享等规则做动态调整
+    platforms: [web]
+    file: slices/conference/web/participant-management.md
+    description: 角色治理（设/撤管理员、转移房主、移出成员、改名片）+ 房间级会控（全员禁麦/禁画/禁言、单成员关设备、设备申请审批与邀请）
     status: active
 
   - id: conference/room-chat
     name: 会中聊天
     tags: [chat, message, group, history, unread, disable-chat]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/room-chat.md
+    platforms: [web]
+    file: slices/conference/web/room-chat.md
     description: 会议与群组会话绑定、消息收发、历史分页、未读状态、禁聊联动
     status: active
 
@@ -302,40 +286,40 @@ slices:
   - id: conference/device-control
     name: 设备控制
     tags: [camera, microphone, speaker, device, permission, switch, recovery]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/device-control.md
+    platforms: [web]
+    file: slices/conference/web/device-control.md
     description: 会中摄像头/麦克风/扬声器的开关、切换、权限处理与异常恢复
     status: active
 
   - id: conference/network-quality
     name: 网络质量
     tags: [network, quality, rtt, packet-loss, reconnect, weak-network]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/network-quality.md
+    platforms: [web]
+    file: slices/conference/web/network-quality.md
     description: 会中网络状态感知、弱网提示、重连状态与超时告警
     status: active
 
   - id: conference/screen-share
     name: 屏幕分享
     tags: [screen-share, desktop, system-audio, state, event]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/screen-share.md
+    platforms: [web]
+    file: slices/conference/web/screen-share.md
     description: 桌面端共享屏幕、共享系统音频、共享状态监听、共享权限控制与共享相关事件
     status: active
 
   - id: conference/beauty-effects
     name: 美颜效果
     tags: [beauty, smooth, whiten, ruddy, preview, two-phase]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/beauty-effects.md
+    platforms: [web]
+    file: slices/conference/web/beauty-effects.md
     description: 本地视频的磨皮/美白/红润等基础美颜，本地预览与保存生效的两阶段流程
     status: active
 
   - id: conference/virtual-background
     name: 虚拟背景
     tags: [virtual-background, blur, replace, assetsPath, browser-support]
-    platforms: [web, android, ios, flutter, electron]
-    file: slices/conference/virtual-background.md
+    platforms: [web]
+    file: slices/conference/web/virtual-background.md
     description: 背景虚化/替换、模型资源与 assetsPath 配置、浏览器支持性检测、预览与保存生效链路
     status: active
 
@@ -343,7 +327,7 @@ slices:
     name: 官方 RoomKit 适配层 API
     tags: [official-roomkit, conference-api, conference-object, setWidgetVisible, registerWidget, onWill, setFeatureConfig, createAndJoinRoom, joinRoom, UIKitProvider]
     platforms: [web]
-    file: slices/conference/official-roomkit-api.md
+    file: slices/conference/web/official-roomkit-api.md
     description: 官方 RoomKit 集成模式下 conference 对象的完整 API 签名、枚举定义、调用时序和代码示例（ui_mode=official-roomkit 专用）
     status: active
 
@@ -388,11 +372,10 @@ scenarios:
     slices:
       - conference/login-auth
       - conference/prejoin-check
-      - conference/room-config
       - conference/room-lifecycle
-      - conference/room-invite
+      - conference/room-lifecycle
+      - conference/room-call
       - conference/participant-list
-      - conference/room-moderation
       - conference/device-control
       - conference/network-quality
       - conference/room-chat
@@ -410,12 +393,11 @@ scenarios:
       - conference/login-auth
       - conference/prejoin-check
       - conference/room-schedule
-      - conference/room-config
       - conference/room-lifecycle
-      - conference/room-invite
+      - conference/room-lifecycle
+      - conference/room-call
       - conference/participant-list
       - conference/participant-management
-      - conference/room-moderation
       - conference/device-control
       - conference/network-quality
       - conference/room-chat
@@ -432,7 +414,7 @@ scenarios:
     slices:
       - conference/login-auth
       - conference/prejoin-check
-      - conference/room-config
+      - conference/room-lifecycle
       - conference/room-lifecycle
       - conference/participant-list
       - conference/video-layout
@@ -440,10 +422,9 @@ scenarios:
       - conference/network-quality
       - conference/room-chat
       - conference/screen-share
-      - conference/room-moderation
       - conference/participant-management
       - conference/room-schedule
-      - conference/room-invite
+      - conference/room-call
       - conference/beauty-effects
       - conference/virtual-background
     file: scenarios/conference/base/general-conference.md
@@ -457,7 +438,7 @@ scenarios:
     slices:
       - conference/login-auth
       - conference/prejoin-check
-      - conference/room-config
+      - conference/room-lifecycle
       - conference/room-lifecycle
       - conference/participant-list
       - conference/video-layout
@@ -465,10 +446,9 @@ scenarios:
       - conference/network-quality
       - conference/room-chat
       - conference/screen-share
-      - conference/room-moderation
       - conference/participant-management
       - conference/room-schedule
-      - conference/room-invite
+      - conference/room-call
     file: scenarios/conference/base/webinar-conference.md
     description: 研讨会 / 宣讲会：主讲人中心化的 webinar 房型，会中以主舞台、聊天问答、受控上台和主持治理为核心
     status: active

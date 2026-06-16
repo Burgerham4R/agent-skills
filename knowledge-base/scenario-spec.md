@@ -12,7 +12,6 @@ scenario 文件是 **topic skill 的场景剧本**。topic 接到一个场景 id
 
 - 列出场景包含哪些能力（slice）
 - 决定是否让用户在"主链路 / 完整版"之间选 coverage
-- 在 ui_mode=full-ui 时决定 UI 哪些区域显示、哪些隐藏
 - 走每一步 slice 集成
 
 → **写 scenario 文件 = 给 topic 提供执行剧本**，措辞应面向"AI 读这份文件后该做什么"。
@@ -26,7 +25,15 @@ scenario 文件是 **topic skill 的场景剧本**。topic 接到一个场景 id
 | 形态 | 适用场景 | 特征 | 用户是否参与 coverage 选择 |
 |---|---|---|---|
 | **A：单一完整能力** | 所有 slice 缺一不可：1v1 通话、秀场直播间、电商直播等 | 能力不可拆，少一个就不成场景 | 否 |
-| **B：主链路 + 可选增强** | 有清晰的"开箱可用最小集 + 推荐增强"边界：通用会议、协作工具等 | 主链路是默认，增强按需 | 是（minimal / complete） |
+| **B：主链路 + 可选增强** | 有清晰的"开箱可用最小集 + 推荐增强"边界：通用会议、协作工具等 | 主链路是默认，增强按需 | 是（minimal / complete 二选一，或可选模块多选） |
+
+**形态 B 的两种 coverage 粒度：**
+
+- **B-二选一（minimal / complete）**：增强项作为一个整体,用户在"主链路"和"完整版"之间二选一。写 `enhancement_level`。
+- **B-多选（必装骨架 + 可选模块多选）**：增强项彼此独立、用户通常只要其中几项(典型如通用会议:要屏幕共享和预约,但不要美颜)。此时**必装骨架 always on,可选模块逐项多选,默认只勾选命中用户 `target_features` / 原始 prompt 的项**,结果写入 `confirmed_plan = 必装骨架 + 选中模块`。
+  - 选这种粒度的判据:可选项之间没有"要就全要"的耦合,且默认全装会给用户塞他没要的功能(over-integration)。
+  - 反模式:把这类场景写成 Form A(整张 `slices:` 全集默认安装)——这正是"用户没要美颜却被装上美颜"的根因,**禁止**。
+  - 章节写法见下方「形态 B：能力展示 + coverage」的多选变体说明;参考实现 `scenarios/conference/base/general-conference.md`。
 
 形态判断准则：
 - 写 P1 之前先问自己——"如果不选这条增强，场景还能成立吗？" 能 → P1；不能 → P0。
@@ -75,7 +82,6 @@ scenario 文件是 **topic skill 的场景剧本**。topic 接到一个场景 id
 ### P1 常见增强（可选）
 
 - `<product>/<slice-id>` —— {一句话}
-  - UI 默认渲染：是 / 否
   - 推荐默认勾选：是 / 否
 - ...
 ```
@@ -84,13 +90,7 @@ scenario 文件是 **topic skill 的场景剧本**。topic 接到一个场景 id
 
 | 字段 | 含义 | 取值 |
 |---|---|---|
-| `UI 默认渲染` | 在 ui_mode=full-ui 的 reference HTML 里，对应按钮/区域是否默认存在 | 是 / 否 |
 | `推荐默认勾选` | minimal coverage 时是否仍当作必装；complete 时是否预选 | 是 / 否 |
-
-**关键不变量（仅形态 B）**：
-
-- `UI 默认渲染 = 是` **必须** `推荐默认勾选 = 是`。否则出现"按钮存在但点了没反应"的 bug（参见 todo 中 screen-share 案例）。
-- `UI 默认渲染 = 否` 时，无论是否勾选，都不强制按钮在 UI 上显示。
 
 ### 3. `## 能力展示` (A) 或 `## 能力展示与 coverage 选择` (B)
 
@@ -144,38 +144,29 @@ A 形态不向用户提问 coverage，topic 展示完直接进 Step 2。
 | 2 | 完整版 | `enhancement_level: complete` |
 ```
 
-### 4. `## UI 区域 / Slice 映射`（仅 ui_mode=full-ui 场景必需）
-
-只在场景于 `scenario-mapping.md` 有 reference HTML 时才需要这一节。无 UI 模板的场景跳过。
-
-列出 reference HTML 里所有可见 UI 区域，标注对应 slice 与显隐处理。
-
-#### 形态 A：UI 映射（无 minimal/complete 分支）
+**B-多选变体（必装骨架 + 可选模块多选）**：当增强项彼此独立、不应默认全装时,用这种写法替代上面的二选一表。章节里必须包含:
 
 ```markdown
-| UI 区域（class） | 对应 slice |
-|---|---|
-| `.ui-stage` | `<product>/video-layout` |
-| `.ui-bottombar [data-action="mic"]` | `<product>/device-control` |
-| ... | ... |
+## 能力展示与 coverage 选择
+
+### 必装骨架(always on,不向用户提问)
+- `<product>/<skeleton-slice>` —— ...
+
+### 可选模块(多选,默认只勾选命中用户需求的项)
+- `<product>/<optional-slice>` —— ...
+
+### 执行规则(topic 必须遵守)
+1. 预勾选 = 仅命中 `target_features` / 原始 prompt 的可选模块;其余默认不勾。
+2. 展示文案(说明骨架默认装 + 已识别到的增强项)。
+3. AskUserQuestion 多选(超 4 项分组拆问)。**每组必须包含「以上都不需要」选项（value=`none`），放在末尾，作为用户显式拒绝该组所有能力的出口。选中`none`时该组其他选项视为未勾选。**
+4. 写 `confirmed_plan = 必装骨架 + 选中模块`(唯一下游真源)。
+5. 未选中的模块不得进 `confirmed_plan`,也不得在代码里顺手生成。
+6. `enhancement_level` 仅兼容:全选 → complete,否则 → minimal。
 ```
 
-A 形态所有列出的区域都"显示"，不需要分支。
+topic Step 1.5 会识别这种章节并按「执行规则」走,而不是把整张 `slices:` 当默认全集。
 
-#### 形态 B：UI 映射（按 coverage 分支）
-
-```markdown
-| UI 区域（class） | 对应 slice | minimal | complete |
-|---|---|---|---|
-| `.ui-topbar` | `<product>/login-auth` + `<product>/room-lifecycle` | 显示 | 显示 |
-| `.ui-stage` | `<product>/video-layout` | 显示 | 显示 |
-| `.ui-bottombar [data-action="share"]` | `<product>/screen-share` | 隐藏（v-if="false" 加注释） | 显示并接 composable |
-| ... | ... | ... | ... |
-```
-
-**作用**：topic Step 3.5 binding-audit 直接读这张表决定 UI 显隐。决策表 per-scenario 显式列出，SKILL.md 不必写。
-
-### 5. `## 前置条件`
+### 4. `## 前置条件`
 
 集成前用户必须做的事（控制台配置、SDK 版本、账号开通、平台权限等）。topic Step 2 展示给用户。
 
@@ -185,7 +176,7 @@ A 形态所有列出的区域都"显示"，不需要分支。
 - {权限 / 配置 / 其他}
 ```
 
-### 6. `## 验收 Checklist`
+### 5. `## 验收 Checklist`
 
 集成完成后用户用来自检"我这套真的跑起来了吗"的清单。topic Step 完成后展示。
 
@@ -196,7 +187,7 @@ A 形态所有列出的区域都"显示"，不需要分支。
 - [ ] {...}
 ```
 
-### 7. `## 排障速查`（可选但强烈建议）
+### 6. `## 排障速查`（可选但强烈建议）
 
 把场景下高频出错的 3-5 个症状 → 排查路径列出。**不重复 slice 内的排障**，只列**跨 slice、属于场景级的**问题。
 
@@ -225,7 +216,6 @@ A 形态所有列出的区域都"显示"，不需要分支。
 | slice id 列表 | `index.yaml` `scenarios.<id>.slices` 数组 ↔ 本文件「能力清单」(A) 或 「能力分层」(B) 总和 |
 | 中文名 | 「能力清单 / 能力分层」中的 slice 名 ↔ 「能力展示」展示文案中的 slice 名 |
 | `推荐默认勾选 = 是`（仅 B） | 必须在「能力展示」展示文案的 ✓ 标记列表 |
-| `UI 默认渲染 = 是`（仅 B） | 必须在「UI 区域 / Slice 映射」中标注 minimal 时也"显示" |
 
 未来可加 `scripts/validate_scenario.py` 自动跑这些检查。
 
@@ -261,13 +251,6 @@ A 形态所有列出的区域都"显示"，不需要分支。
   • ...
 
 接下来开始集成。
-
-## UI 区域 / Slice 映射
-
-| UI 区域（class） | 对应 slice |
-|---|---|
-| `.ui-stage` | ... |
-| ... | ... |
 
 ## 前置条件
 
@@ -307,10 +290,8 @@ A 形态所有列出的区域都"显示"，不需要分支。
 ### P1 常见增强（可选）
 
 - `{product}/{slice-id-3}` —— {一句话}
-  - UI 默认渲染：是
   - 推荐默认勾选：是
 - `{product}/{slice-id-4}` —— {一句话}
-  - UI 默认渲染：否
   - 推荐默认勾选：否
 
 ## 能力展示与 coverage 选择
@@ -339,13 +320,6 @@ A 形态所有列出的区域都"显示"，不需要分支。
 | 1 | 主链路 | `enhancement_level: minimal` |
 | 2 | 完整版 | `enhancement_level: complete` |
 
-## UI 区域 / Slice 映射
-
-| UI 区域（class） | 对应 slice | minimal | complete |
-|---|---|---|---|
-| `.ui-topbar` | ... | 显示 | 显示 |
-| `.ui-bottombar [data-action="share"]` | `{product}/screen-share` | 隐藏 | 显示 |
-
 ## 前置条件
 
 - {条件 1}
@@ -369,7 +343,7 @@ A 形态所有列出的区域都"显示"，不需要分支。
 
 老文件不强制立刻按 spec 重写。建议路径：
 
-1. **`general-conference.md`** → 走 B 形态。原文里已有"P0 默认会议骨架 / P1 按需补命中"分层结构，只需补「能力展示与 coverage 选择」「UI 区域 / Slice 映射」「验收 Checklist」三节，其他内容可移到「设计取舍」可选章节。
+1. **`general-conference.md`** → 走 B 形态。原文里已有"P0 默认会议骨架 / P1 按需补命中"分层结构，只需补「能力展示与 coverage 选择」「验收 Checklist」两节，其他内容可移到「设计取舍」可选章节。
 
 2. **`entertainment-live-room.md`** → 走 A 形态。原文按"主播端流程 / 观众端流程 / 阶段一 / 阶段二"组织，先按 spec 改为「能力清单」「能力展示」+ 验收 Checklist；流程描述可保留为「子场景命中差异」可选章节。
 

@@ -24,5 +24,6 @@ export function getBasicInfo(userId: string) {
     sdkAppId: SDKAPPID,
     userId,
     userSig: generator.genTestUserSig(userId),
+    scene: 5001,
   };
 }

@@ -36,51 +36,50 @@ Recap example:
 
 ## A1-Q1 — Credentials
 
-**Before showing the manual question below**, run the MCP credential detection
-protocol: Read `reference/mcp-credential-detection.md` and follow its Steps 1–4.
-If MCP detection succeeds (user confirms the detected credentials), skip the
-manual question below entirely and proceed to A1.2. Only show the manual question
-if MCP detection falls through to Step 4 (Fallback).
+Ask the user directly for their SDKAppID and a test UserSig (there is no MCP
+auto-detection — the skill does not read credentials from any MCP config).
 
-Question text: "Do you already have a TRTC SDKAppID and SecretKey?"
+Question text: "Do you already have a TRTC SDKAppID and a test UserSig?"
 
 | # | Option | Next |
 |---|--------|------|
-| 1 | Yes, I have them ready | Wait for the user to paste. Proceed to A1.2 after both are captured. |
+| 1 | Yes, I have them ready | Wait for the user to paste. Proceed to A1.2 after they are captured. |
 | 2 | Not yet, show me how to get them | Show the steps below, then wait. |
 | 3 | I don't know what those are | Show the 1-sentence explanation + the steps below, then wait. |
 | 4 | Type something | free-text |
 
 **Credential acquisition steps** (shown for options 2 and 3):
 
-> To run the demo you need an SDKAppID and a SecretKey from the TRTC console.
+> To run the demo you need an SDKAppID and a test UserSig from the TRTC console.
 >
 > 1. Open https://trtc.io/console
 > 2. Sign up or log in with your Tencent Cloud account
 > 3. Click "Create Application", give it any name
-> 4. Once created, the application detail page shows the SDKAppID at the top. Open the "Quick Start" or "Basic Info" tab to reveal the SecretKey.
+> 4. Once created, the application detail page shows the SDKAppID at the top.
+> 5. Open the "Quick Start / UserSig 生成&校验" tool, enter a userId (e.g. `user001`), and generate a test UserSig.
 >
-> Paste both values here when you have them.
+> Paste the SDKAppID and the generated UserSig here when you have them.
+> (Note: console-issued UserSig is for development only and expires; production
+> UserSig must be issued by your own backend. Keep your SecretKey on the server —
+> never paste it into client code.)
 
 Do not attempt to auto-open the browser. Some environments (SSH / headless containers / CI) do not have a GUI, and a silent failure there is worse than a working copy-paste flow.
 
-### Demo credential injection (MCP-aware)
+### Demo credential injection
 
-After credentials are confirmed (via MCP auto-detect or manual input) and the
-demo is cloned, before configuring the demo's credential file:
+After credentials are confirmed and the demo is cloned, before configuring the
+demo's credential file:
 
-**If MCP is available** (`.mcp.json` has a matching server entry):
-1. Read `reference/mcp-usersig-generation.md` and follow its Generation Protocol
-2. Call `get_usersig` for `user001` (and `user002` if the demo needs two users)
-3. Write both the SDKAppID AND the generated userSig(s) into the demo's config
-   file (the specific file varies by product/platform — check the demo README)
-4. This means the demo can run immediately without the user needing to generate
-   credentials manually on the console
+1. Read `reference/usersig-handling.md` and follow its Generation Protocol.
+2. Write the SDKAppID into the demo's config file (the specific file varies by
+   product/platform — check the demo README); leave the userSig as a placeholder.
+3. Point the user to the console's "Quick Start / UserSig 生成&校验" tool to
+   generate a test userSig for `user001` (and `user002` if the demo needs two
+   users), and tell them exactly where to paste it.
 
-**If MCP is NOT available:**
-- Use the manually-provided SDKAppID/SecretKey
-- Instruct the user on where to paste them in the demo config file
-- Point them to the console's "Quick Start" tool for generating a test userSig
+The skill does NOT auto-generate UserSig. Always hand off the console steps so
+the user obtains and pastes their own test userSig (see `usersig-handling.md`
+→ "Completion handoff").
 
 ## A1-Q2 — Step gate (after each milestone: clone done, pod install done, etc.)
 

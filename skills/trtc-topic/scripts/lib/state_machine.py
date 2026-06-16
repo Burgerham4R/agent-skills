@@ -1,35 +1,13 @@
-"""Slice-loop state machine for the topic skill.
+"""Execution-step state machine for the topic skill.
 
-The state machine is the *enforcement mechanism* that prevents the AI from
-batch-reading slices, batch-generating code, or skipping `apply`. It lives
-on disk in `.trtc-session.yaml` so PreToolUse / Stop hooks can read the same
-state the topic skill is driving.
+The state machine is the enforcement mechanism for topic execution. It stores a
+single ``execution_queue`` in ``.trtc-session.yaml``. Each execution step has a
+uniform shape:
 
-Public API:
-    init_queue(session_path)
-    current_slice(session_path) -> (index, slice_id, state)
-    advance(session_path, transition) -> new_state
-    status(session_path) -> dict           # convenience for CLIs
+    {id, type: "slice" | "unit", status, slices: [...]}
 
-State diagram (one slice's lifecycle):
-
-    not_started ──mark_slice_read──▶ slice_read
-                                        │
-                                        ▼
-                                    code_written ──mark_apply_failed──▶ apply_failed
-                                        │                                   │
-                                        │                            mark_code_written
-                                        ▼                                   │
-                                    apply_passed ◀──────────────────────────┘
-                                        │
-                              mark_user_confirmed
-                                        │
-                                        ▼
-                          (index += 1, state = not_started)
-                                        │
-                              (or all_done if last slice)
-
-Any transition not covered by the diagram above raises RuntimeError.
+Slices remain the knowledge and rule source. Execution steps define how many
+slices are delivered in one read/write/apply loop.
 """
 from __future__ import annotations
 
@@ -38,11 +16,7 @@ from typing import Optional, Tuple
 
 import yaml
 
-# --- transition table -------------------------------------------------------
 
-# Each entry: (current_state, transition) -> next_state.
-# The special value "ADVANCE_INDEX" means: bump current_slice_index, set the
-# new state to "not_started" (or "all_done" if we walked off the end).
 _TRANSITIONS = {
     ("not_started", "mark_slice_read"): "slice_read",
     ("slice_read", "mark_code_written"): "code_written",
@@ -53,9 +27,9 @@ _TRANSITIONS = {
 }
 
 _KNOWN_TRANSITIONS = {t for (_state, t) in _TRANSITIONS.keys()}
+_TOPIC_ROOT = Path(__file__).resolve().parents[2]
+_EXECUTION_UNITS_PATH = _TOPIC_ROOT / "references" / "execution-units.yaml"
 
-
-# --- yaml IO ----------------------------------------------------------------
 
 def _load(path: Path) -> dict:
     return yaml.safe_load(path.read_text()) or {}
@@ -65,14 +39,115 @@ def _save(path: Path, data: dict) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
 
 
-# --- init_queue -------------------------------------------------------------
+def _step_id_from_slices(slice_ids: list[str]) -> str:
+    if len(slice_ids) == 1:
+        return slice_ids[0]
+    return "__".join(s.split("/", 1)[1] for s in slice_ids)
+
+
+def _step_type(slice_ids: list[str]) -> str:
+    return "unit" if len(slice_ids) > 1 else "slice"
+
+
+def _make_step(step_id: str, title: str, slice_ids: list[str], *, status: str = "pending") -> dict:
+    return {
+        "id": step_id,
+        "type": _step_type(slice_ids),
+        "title": title,
+        "status": status,
+        "slices": slice_ids,
+    }
+
+
+def _build_declared_unit_steps(raw_units, plan: list[str]) -> list[dict]:
+    """Group only slices already present in confirmed_plan."""
+    configured = [
+        sid
+        for raw in raw_units or []
+        for sid in (raw.get("slices") or [])
+    ]
+    duplicates = sorted({sid for sid in configured if configured.count(sid) > 1})
+    if duplicates:
+        raise RuntimeError("delivery unit config contains duplicate slices: " + ", ".join(duplicates))
+
+    remaining = list(plan)
+    steps: list[dict] = []
+
+    for raw in raw_units or []:
+        group = raw.get("slices") or []
+        slice_ids = [sid for sid in group if sid in remaining]
+        if len(slice_ids) < 2:
+            continue
+        step_id = raw.get("id") or _step_id_from_slices(slice_ids)
+        steps.append(_make_step(step_id, raw.get("title") or step_id, slice_ids))
+        for sid in slice_ids:
+            remaining.remove(sid)
+
+    for sid in remaining:
+        steps.append(_make_step(sid, sid, [sid]))
+
+    order = {sid: i for i, sid in enumerate(plan)}
+    steps.sort(key=lambda step: min(order[sid] for sid in step["slices"]))
+    return steps
+
+
+def _scenario_delivery_units(data: dict) -> list[dict]:
+    scenario = data.get("scenario")
+    if not scenario or not _EXECUTION_UNITS_PATH.exists():
+        return []
+    config = yaml.safe_load(_EXECUTION_UNITS_PATH.read_text()) or {}
+    return (
+        (config.get("scenarios") or {})
+        .get(scenario, {})
+        .get("delivery_units")
+        or []
+    )
+
+
+def _build_slice_steps(plan: list[str]) -> list[dict]:
+    return [_make_step(sid, sid, [sid]) for sid in plan]
+
+
+def _flatten_slices(queue: list[dict]) -> list[str]:
+    return [sid for step in queue for sid in step.get("slices", [])]
+
+
+def _execution_queue_from_legacy(data: dict) -> list[dict] | None:
+    """Best-effort read compatibility for old sessions."""
+    if data.get("execution_queue"):
+        return data["execution_queue"]
+    if data.get("delivery_unit_queue"):
+        return [
+            _make_step(
+                entry.get("id") or _step_id_from_slices(entry.get("slices", [])),
+                entry.get("title") or entry.get("id") or "",
+                entry.get("slices", []),
+                status=entry.get("status", "pending"),
+            )
+            for entry in data["delivery_unit_queue"]
+        ]
+    if data.get("slice_queue"):
+        return [
+            _make_step(entry.get("id"), entry.get("id"), [entry.get("id")], status=entry.get("status", "pending"))
+            for entry in data["slice_queue"]
+            if entry.get("id")
+        ]
+    return None
+
+
+def _current_index_state(data: dict) -> tuple[int, str]:
+    if "current_execution_index" in data or "current_execution_state" in data:
+        return data.get("current_execution_index", 0), data.get("current_execution_state") or "not_started"
+    if data.get("execution_granularity") in {"unit", "delivery_unit"}:
+        return data.get("current_unit_index", 0), data.get("current_unit_state") or "not_started"
+    return data.get("current_slice_index", 0), data.get("current_slice_state") or "not_started"
+
 
 def init_queue(session_path) -> None:
-    """Materialise `confirmed_plan` into a `slice_queue` cursor on disk.
+    """Materialise ``confirmed_plan`` into ``execution_queue``.
 
-    Idempotent when the plan matches what's already installed; refuses to
-    re-init if the user (or another tool) has changed `confirmed_plan` —
-    the queue is frozen once topic owns the loop.
+    Idempotent when the queue already covers the same confirmed_plan. Refuses
+    re-init if the plan changed after topic took ownership.
     """
     path = Path(session_path)
     data = _load(path)
@@ -84,70 +159,84 @@ def init_queue(session_path) -> None:
         )
 
     expected_ids = list(plan)
-
-    existing_queue = data.get("slice_queue")
+    existing_queue = data.get("execution_queue")
     if existing_queue is not None:
-        existing_ids = [entry.get("id") for entry in existing_queue]
-        if existing_ids != expected_ids:
+        if _flatten_slices(existing_queue) != expected_ids:
             raise RuntimeError(
-                "slice_queue is frozen and differs from confirmed_plan — "
-                "the queue cannot be re-initialised mid-flight. To reset, "
-                "remove slice_queue / current_slice_index / current_slice_state "
-                "from the session file and run init again."
+                "execution_queue is frozen and differs from confirmed_plan — "
+                "remove execution_queue / current_execution_index / "
+                "current_execution_state from the session file and run init again."
             )
-        # Same plan — leave the cursor where it is. Idempotent.
         return
 
-    data["slice_queue"] = [{"id": sid, "status": "pending"} for sid in expected_ids]
-    data["current_slice_index"] = 0
-    data["current_slice_state"] = "not_started"
+    if data.get("execution_granularity") in {"unit", "delivery_unit"}:
+        raw_units = data.get("delivery_units") or _scenario_delivery_units(data)
+        queue = _build_declared_unit_steps(raw_units, expected_ids)
+    else:
+        queue = _build_slice_steps(expected_ids)
+
+    data["execution_queue"] = queue
+    data["current_execution_index"] = 0
+    data["current_execution_state"] = "not_started"
     _save(path, data)
 
 
-# --- current_slice ----------------------------------------------------------
-
-def current_slice(session_path) -> Tuple[Optional[int], Optional[str], Optional[str]]:
-    """Return ``(index, slice_id, state)`` for the cursor.
-
-    ``(None, None, None)`` when:
-      - the session file does not exist
-      - the session file exists but has no slice_queue (topic flow not active)
-
-    Hooks rely on the all-None return to detect "not in topic flow" and
-    fall through silently.
-    """
+def current_scope(session_path) -> dict:
+    """Return the active execution step."""
     path = Path(session_path)
     if not path.exists():
-        return (None, None, None)
+        return {"initialised": False, "reason": "session file missing"}
 
     data = _load(path)
-    queue = data.get("slice_queue")
+    queue = _execution_queue_from_legacy(data)
     if not queue:
-        return (None, None, None)
+        return {"initialised": False, "reason": "execution_queue not set"}
 
-    state = data.get("current_slice_state")
-    idx = data.get("current_slice_index")
-
+    idx, state = _current_index_state(data)
     if state == "all_done":
-        # Cursor walked past the end. Report no current slice but a state
-        # callers can recognise.
-        return (idx, None, "all_done")
+        return {
+            "initialised": True,
+            "kind": "execution",
+            "index": idx,
+            "state": "all_done",
+            "total": len(queue),
+            "id": None,
+            "title": None,
+            "type": None,
+            "slice_ids": [],
+            "queue": queue,
+        }
+    if idx is None or idx < 0 or idx >= len(queue):
+        return {"initialised": False, "reason": "execution cursor out of range"}
 
-    if idx is None or idx >= len(queue):
+    step = queue[idx]
+    slice_ids = step.get("slices") or [step.get("id")]
+    return {
+        "initialised": True,
+        "kind": step.get("type", _step_type(slice_ids)),
+        "index": idx,
+        "state": state,
+        "total": len(queue),
+        "id": step.get("id"),
+        "title": step.get("title") or step.get("id"),
+        "type": step.get("type", _step_type(slice_ids)),
+        "slice_ids": slice_ids,
+        "queue": queue,
+    }
+
+
+def current_slice(session_path) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    """Compatibility helper returning the first slice in the current step."""
+    scope = current_scope(session_path)
+    if not scope.get("initialised"):
         return (None, None, None)
+    if scope.get("state") == "all_done":
+        return (scope.get("index"), None, "all_done")
+    slice_ids = scope.get("slice_ids") or []
+    return (scope.get("index"), slice_ids[0] if slice_ids else None, scope.get("state"))
 
-    return (idx, queue[idx]["id"], state)
-
-
-# --- advance ----------------------------------------------------------------
 
 def advance(session_path, transition: str) -> str:
-    """Apply a transition; return the new state.
-
-    Raises ``RuntimeError`` for any illegal (state, transition) pair, for
-    unknown transition names, and for transitions when the queue is not
-    initialised or already exhausted.
-    """
     if transition not in _KNOWN_TRANSITIONS:
         raise RuntimeError(
             f"unknown transition '{transition}'. Known transitions: "
@@ -156,18 +245,27 @@ def advance(session_path, transition: str) -> str:
 
     path = Path(session_path)
     data = _load(path)
-    queue = data.get("slice_queue")
+    queue = data.get("execution_queue")
     if not queue:
-        raise RuntimeError(
-            "slice_queue not initialised — call init_queue() before advance()."
-        )
+        legacy = _execution_queue_from_legacy(data)
+        if legacy:
+            queue = legacy
+            data["execution_queue"] = queue
+        else:
+            raise RuntimeError("execution_queue not initialised — call init_queue() before advance().")
 
-    state = data.get("current_slice_state")
-    idx = data.get("current_slice_index", 0)
+    state = data.get("current_execution_state")
+    idx = data.get("current_execution_index", 0)
+    if state is None:
+        legacy_idx, legacy_state = _current_index_state(data)
+        idx = legacy_idx
+        state = legacy_state
+        data["current_execution_index"] = idx
+        data["current_execution_state"] = state
 
     if state == "all_done":
         raise RuntimeError(
-            "all_done — the slice queue is finished; no further transitions "
+            "all_done — the execution queue is finished; no further transitions "
             "are allowed. Start a new scenario or reset the session."
         )
 
@@ -180,54 +278,51 @@ def advance(session_path, transition: str) -> str:
         )
 
     if next_state == "ADVANCE_INDEX":
-        # Mark the just-confirmed slice as done. Drop its apply-evidence
-        # JSON: a clean integration leaves the evidence directory empty.
-        # Failed evidence stays (we never reach this branch on apply_failed).
-        confirmed_id = queue[idx]["id"]
-        queue[idx]["status"] = "done"
-        ev_path = (
-            path.parent / ".trtc-apply-evidence"
-            / (confirmed_id.replace("/", "__") + ".json")
-        )
-        try:
-            ev_path.unlink()
-        except FileNotFoundError:
-            pass
+        step = queue[idx]
+        step["status"] = "done"
+        evidence_ids = [step.get("id"), *step.get("slices", [])]
+        for evidence_id in [eid for eid in evidence_ids if eid]:
+            ev_path = path.parent / ".trtc-apply-evidence" / (evidence_id.replace("/", "__") + ".json")
+            try:
+                ev_path.unlink()
+            except FileNotFoundError:
+                pass
 
         new_idx = idx + 1
-        if new_idx >= len(queue):
-            data["current_slice_index"] = new_idx
-            data["current_slice_state"] = "all_done"
-            _save(path, data)
-            return "all_done"
-        data["current_slice_index"] = new_idx
-        data["current_slice_state"] = "not_started"
+        data["execution_queue"] = queue
+        data["current_execution_index"] = new_idx
+        data["current_execution_state"] = "all_done" if new_idx >= len(queue) else "not_started"
         _save(path, data)
-        return "not_started"
+        return data["current_execution_state"]
 
-    data["current_slice_state"] = next_state
+    data["execution_queue"] = queue
+    data["current_execution_state"] = next_state
     _save(path, data)
     return next_state
 
 
-# --- status (convenience for CLI display) -----------------------------------
-
 def status(session_path) -> dict:
-    """Return a small dict the CLI can pretty-print."""
     path = Path(session_path)
     if not path.exists():
         return {"initialised": False, "reason": "session file missing"}
     data = _load(path)
-    queue = data.get("slice_queue")
+    queue = _execution_queue_from_legacy(data)
     if not queue:
-        return {"initialised": False, "reason": "slice_queue not set"}
-    idx = data.get("current_slice_index", 0)
-    state = data.get("current_slice_state")
+        return {"initialised": False, "reason": "execution_queue not set"}
+
+    idx, state = _current_index_state(data)
+    current = queue[idx] if idx < len(queue) else None
+    slice_ids = (current.get("slices") if current else None) or []
+    step_type = current.get("type", _step_type(slice_ids)) if current else None
     return {
         "initialised": True,
+        "kind": step_type or "execution",
         "index": idx,
         "state": state,
         "total": len(queue),
-        "current_slice_id": queue[idx]["id"] if idx < len(queue) else None,
+        "current_slice_id": slice_ids[0] if slice_ids else None,
+        "current_unit_id": current.get("id") if current and step_type == "unit" else None,
+        "current_id": current.get("id") if current else None,
+        "slice_ids": slice_ids,
         "queue": queue,
     }

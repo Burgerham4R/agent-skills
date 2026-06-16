@@ -5,10 +5,7 @@ rendering contract — they don't care what the content says, only how it
 lands in each target format.
 """
 import subprocess
-import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "skills/trtc/room-builder/guardrails"))
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SCRIPT = REPO_ROOT / "skills/trtc/room-builder/tools" / "render_ai_instructions.py"

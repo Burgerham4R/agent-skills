@@ -3,80 +3,17 @@
 > Loaded by `../../trtc-onboarding/SKILL.md` when `intent ∈ {integrate-scenario, integrate-feature}` in `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml`.
 > Before reading this file, SKILL.md must have populated `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml` and passed Stage 1 calibration (including Stage 1.0 conflict resolution if applicable).
 
-**Your role: Co-developer.** You scan the project and write code that follows slice-defined best practices. Every code-writing step silently runs through `../../trtc-apply/SKILL.md` as an internal quality gate before being declared done — the user never opts into it, and it is never surfaced as a user-facing service. See **"Calling apply"** below for the exact request/response contract.
+**Your role: Co-developer.** You scan the project and write code that follows slice-defined best practices. Code-writing runs inside the topic slice loop, where a silent internal structural gate (`apply.py`) runs before each step is declared done — the user never opts into it, and it is never surfaced as a user-facing service. See **"About apply"** below.
 
-## Calling apply (internal quality gate)
+## About apply (internal structural gate)
 
-apply is invoked per step, not per file, and not per session. It follows the I/O contract defined in `../../trtc-apply/SKILL.md` Phase 0. Construct each call explicitly; do not dump raw code and hope apply infers context.
+A2 does **not** call apply directly. Code-writing happens inside the topic slice loop (A2 hands off to `../../trtc-topic/SKILL.md`), and topic runs `apply.py` as a per-step **structural gate** during that loop. You do not construct any apply request here.
 
-**Request construction** (build this before calling apply):
-
-```yaml
-request:
-  code:
-    - path: {relative path under project root}
-      content: {full file content after this step's edits}
-    # include every file this step created or modified, not just the "main" one
-
-  product:     {product}
-  platform:    {platform}
-  capability:  {slice_id of the step just completed, e.g. "live/coguest-apply"}
-
-  project_context:
-    root:              {project root absolute path, if file scanning is available}
-    modified_files:    {list of paths touched by this step}
-    has_existing_tests: {true if the project has a test command configured, else false}
-
-  related_capabilities:
-    # include any prerequisite slices the current step depends on,
-    # so apply can verify cross-slice prerequisites without re-inferring
-    - {e.g. live/login-auth if this step depends on login}
-    - {e.g. live/device-control if this step opens camera/mic}
-
-  mode: full | quick | static-only
-    # full        → first integration of a full scenario step
-    # quick       → small edits (< 50 lines), single capability
-    # static-only → no project_context.root available
-```
-
-**Mode selection rules:**
-
-| Situation | mode |
-|-----------|------|
-| First implementation of a slice, full project available | `full` |
-| User asked for an adjustment in A2-Q3 option 3, edit is < 50 lines | `quick` |
-| No project scanning / no build env (user pasted snippet) | `static-only` |
-
-**Response handling:**
-
-After apply returns, read the structured `response` and branch as follows:
-
-| response.status | What to do |
-|-----------------|------------|
-| `pass` | Report the step done (see step summary template in A2-Q3). Show the compile command + exit code from `response.compile_check` as proof. Do not display constraint-check details unless the user asks. |
-| `partial` | Step done with non-blocking warnings. Show the warnings inline in the step report, in a single collapsed note. Do NOT block the user from moving to the next step unless a warning is a `critical` severity. |
-| `fail` | Step NOT done. Do not write the step summary. Follow `response.retry_hint.strategy`: see below. |
-
-**Acting on `retry_hint` when `status = fail`:**
-
-| retry_hint.strategy | What to do |
-|---------------------|------------|
-| `patch` | Apply the specific fixes listed in `response.constraint_check.issues[*].fix.code_diff`, write the updated files, re-call apply **once** with the same `capability` but updated `code`. |
-| `regenerate` | Re-generate the step's code from scratch, guided by `retry_hint.focus_on` (those are the things to fix on the re-gen). Call apply again with the new code. |
-| `give-up` | Stop retrying silently. Surface a message to the user framed as "I hit a snag on step N" — never "apply skill said X". Include what was tried (`attempts`) and ask the user whether to skip this step, pause, or provide more context. |
-| `missing-field` | **Do NOT retry.** This is a contract violation on the caller side (onboarding built a malformed request), not a code-quality problem. Log the missing field names from `retry_hint.focus_on` internally, then surface "I hit an internal snag on step N" to the user and offer to skip this step. Treat as a self-bug to report rather than a generation quality issue. |
-
-**Retry guidance:** apply runs an idempotent grep — re-running it after a code change either passes or surfaces a different rule_text. Iterate until apply passes; the Stop hook keeps the loop alive while the state is `apply_failed`. There is no fixed retry cap or `failure_signature` mechanism in the current runtime (the V2 give-up cap was removed).
+What the gate is (and isn't): it is a state-machine forcing function + a lightweight check that code exists and each slice's entry symbol is wired up — it stops the AI from declaring a step done without running a deterministic check. It does **not** verify types, compilation, or runtime correctness. See `../../trtc-apply/SKILL.md` for the exact behavior. Correctness comes from copying slices verbatim and the user confirming in their real project.
 
 **Never:**
 - Never tell the user "I'm calling apply" or "apply said X". apply is silent infrastructure.
-- Never show raw `request` / `response` yaml to the user. Translate to the step report template.
-- Never skip apply to "move faster". Compile evidence is the only acceptable proof that a step is done.
-- **If apply is skipped for any reason** (e.g. context overflow, tool unavailability): the generated file MUST include the following comment at the very top, and the step summary shown to the user MUST include `⚠️ 编译未验证 — apply 未执行，请手动编译确认`. Never declare a step done without this disclosure when apply was not run.
-
-```ts
-// ⚠️ APPLY VERIFICATION SKIPPED — compile and verify manually before shipping
-```
+- Never declare a step done while topic's state machine is at `apply_failed` — the Stop hook blocks end-of-turn until apply passes.
 
 > **Slice discovery vs. slice loading in this path:**
 >
@@ -93,21 +30,94 @@ After apply returns, read the structured `response` and branch as follows:
 Recap example:
 > Alright — Live on iOS, adding gift function to your existing project. I see your Podfile already has AtomicXCore and LoginStore is set up, so we'll start at the gift module directly.
 
+## A2-Qpre — Capability overview (Conference only)
+
+**Trigger**: `product = conference` AND `intent ∈ {integrate-scenario, integrate-feature}` AND `capability_overview_shown != true` in `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml`.
+
+Skip for all other products. Skip whenever `capability_overview_shown = true` (already shown earlier this session, including session reloads and A2-Q4 "Add another feature" loop-backs).
+
+**Purpose**: Conference has 16+ capability slices spanning 7 functional groups. Users who are new to the product cannot make informed scenario or feature choices without first understanding what Conference can do. This step provides a structured capability overview before any selection question, replacing the "blind choice" problem with "informed choice."
+
+**Execution**:
+
+1. Read `${CLAUDE_PLUGIN_ROOT}/skills/trtc-topic/references/execution-units.yaml` → `scenarios.general-conference.delivery_units` for the authoritative grouping.
+2. Read `${CLAUDE_PLUGIN_ROOT}/knowledge-base/index.yaml` → `slices` for each slice's `name` and `description` (filter by `id` starting with `conference/`).
+3. Render the capability overview in the user's language, using this format:
+
+```
+Conference 可以帮你搭建视频会议应用，以下是可集成的全部能力：
+
+[会议基础链路]
+  登录与鉴权 — 统一登录态、SDKAppID/UserID/UserSig 鉴权、登录失效/多端顶替处理
+  房间创建、加入、离开与结束 — 会议从创建到结束的主链路
+
+[会前准备]
+  入会前设备检查 — 摄像头/麦克风/扬声器的会前检测与本地预览
+  设备控制 — 会中摄像头/麦克风/扬声器的开关、切换、权限处理
+
+[音视频与布局]
+  参会人列表与状态 — 参会人列表、角色、发言态、音视频状态
+  视频布局 — 视频区域渲染、布局模板切换、共享突出展示
+  网络质量 — 会中网络状态感知、弱网提示、重连状态
+
+[会中协作]
+  屏幕分享 — 桌面端共享屏幕、共享系统音频、共享状态监听
+  会中聊天 — 会议与群组会话绑定、消息收发、历史分页
+
+[成员与会控]
+  参会人管理与角色治理 — 角色治理、全员/单成员会控、设备申请审批
+  会中呼叫 — 会议进行中向房外用户发起实时呼叫
+
+[预约会议]
+  预约会议 — 未来会议的创建、更新、取消、列表查询与到点提醒
+
+[视频增强]
+  美颜效果 — 磨皮/美白/红润等基础美颜
+  虚拟背景 — 背景虚化/替换、模型资源配置、浏览器支持性检测
+```
+
+4. After the overview, do NOT ask a separate "Did you read this?" question. Proceed directly to A2-Q0 (scenario selection) or A2-Q1 (module selection), depending on `intent`.
+5. **Persist `capability_overview_shown = true`** to `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml`. Piggyback on the next session write (the Stage 1 confirmed write, or the first Checkpoint write) — do NOT trigger an extra Write just for this field.
+
+**Key rules**:
+- The overview is **informational only** — no selection, no `AskUserQuestion`. It exists to give the user mental context for the choices that follow.
+- Group titles come from `execution-units.yaml` `delivery_units[].title`. Slice descriptions come from `index.yaml` `slices[].description`. Do NOT hardcode either — read them at runtime so the overview stays in sync when slices are added/removed.
+- Keep descriptions to one line each. This is a menu card, not a tutorial.
+- If `execution-units.yaml` is missing or has no entry for `general-conference`, fall back to listing all `conference/*` slices from `index.yaml` in declaration order without grouping.
+- This step runs **once per session**, gated by `capability_overview_shown`. On subsequent returns (e.g. A2-Q4 "Add another feature" → loop back to A2-Q1), skip A2-Qpre — the user has already seen the overview.
+
 ## A2-Q0 — Scenario vs single-feature branching
 
 Skip if `intent = integrate-feature` was already explicitly set (user said "add gift" — no need to ask about scenarios).
 
 Ask when `intent = integrate-scenario`, or when the user finished Path A1 of a product that supports scenario-based UI (Conference / Live), or when `target_features` is empty.
 
+**If `product = conference`:** A2-Qpre has already been shown (or skipped on reload). The user now has context about what Conference can do. Proceed with scenario selection.
+
 Question text: "What kind of experience are you building?"
 
-**If `product = conference`:**
+The supported scenarios for v1 are `general-conference` and `1v1-video-consultation`. Do NOT read `index.yaml` to construct this list — these two are aligned with `reference/supported-matrix.md`.
 
-Use exactly the following 2 options. Do NOT read index.yaml to construct this list — the supported scenarios are defined here and aligned with `reference/supported-matrix.md`.
+These two scenarios are NOT interchangeable: `1v1-video-consultation` is a **medical-only terminal path** that copies a complete healthcare project (see CLAUDE.md → Medical new-project shortcut). It must NEVER be presented as a generic option to non-medical users.
 
-**Scenario matching rule (MANDATORY — run before showing options):**
+### A2-Q0 high-confidence short-circuit (run FIRST)
 
-When the user has already described a specific use case (e.g. "在线教育", "online classroom", "远程培训", "客户面试") that does not exactly match a supported scenario name:
+**Precondition**: A2-Qpre has already been shown (or skipped per its trigger rules). The user has seen the capability overview and now has context for what Conference can do.
+
+Before showing any menu, check `scenario` already in `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml` (populated by Stage 0 business-keyword inference, see `SKILL.md` → Business-scenario → product mapping table):
+
+| Inferred `scenario` | Confidence signal (from user's first message) | Action |
+|---|---|---|
+| `general-conference` | "企业内部会议", "部门例会", "团队会议", "团队协作", "corporate meeting", "internal meeting", "general meeting", "视频面试", "远程培训", "online classroom" — any non-medical multi-party scenario keyword | Skip the 2-option menu. Show a single confirmation step: recap the scenario fit ("企业内部会议属于通用会议场景，覆盖多人视频会议、屏幕共享、会控、成员管理"), then `AskUserQuestion` with ONE option "Confirm general-conference" (the auto Other lets the user disagree if needed). On confirm → A2-Q0.5. On Other → re-run Stage 0 inference on the free text. |
+| `1v1-video-consultation` | "远程医疗", "在线问诊", "视频问诊", "医患沟通", "telemedicine", "remote consultation" — any medical-domain keyword | Skip the 2-option menu. Show a single confirmation: recap "1v1 视频问诊场景将创建一个完整的问诊项目模板", `AskUserQuestion` with ONE option "Confirm 1v1-video-consultation". On confirm → A2-Q0.5 (medical new-project condition). On Other → re-run Stage 0 inference. |
+| `general-conference` AND `1v1-video-consultation` both inferred (rare, only when first message mixes both domains) | — | Fall through to the 2-option menu below. |
+| Neither inferred (`scenario = null`) or scenario is one not in v1 (e.g. webinar) | — | Fall through to the 2-option menu below (or trigger Integration scenario gate for hidden scenarios). |
+
+**Why short-circuit exists**: the two scenarios are domain-segregated. Forcing a non-medical user (e.g. "企业内部会议") to look at "1v1 视频问诊 — copies a medical project" alongside their actual choice creates confusion and erodes trust. When the inference is unambiguous, skip the menu.
+
+### Scenario matching rule (for the fall-through 2-option menu only)
+
+When the short-circuit does NOT trigger (i.e. `scenario` is null, or the user described a use case that doesn't cleanly map to either v1 scenario):
 
 1. Acknowledge what they asked for
 2. State that this specific use case does not have a dedicated scenario template
@@ -117,12 +127,11 @@ When the user has already described a specific use case (e.g. "在线教育", "o
 
 **The key rules:**
 - NEVER silently map an unsupported scenario name to a supported one without explaining
-- NEVER present the medical template as suitable for non-medical use cases (it copies a complete medical-specific project)
-- ALWAYS show both options with enough context for the user to make an informed choice
-- If the user's described scenario clearly maps to one option (e.g. "开个会" → 通用会议), you can recommend more directly but still show both options
+- NEVER present the medical template as suitable for non-medical use cases (it copies a complete medical-specific project) — the short-circuit above handles unambiguous non-medical inputs; the 2-option menu only runs when intent is genuinely ambiguous
+- When the 2-option menu DOES run (genuine ambiguity), show both options with their scope description so the user can make an informed choice
 - Do NOT invent features or promise capabilities that are not in the scenario — only describe what the scenario actually provides
 
-**Question text** (use when user has NOT described a specific use case, or after the matching explanation above):
+**Question text** (for the 2-option menu — runs only when the short-circuit above did NOT fire):
 
 "What kind of experience are you building?"
 
@@ -180,17 +189,16 @@ mention the shortcut or CLAUDE.md to the user.
 | # | Option | Fills | Next |
 |---|--------|-------|------|
 | 1 | Create a complete runnable consultation project (recommended: includes the full consultation UI, mock data, and config; start with `pnpm install` and `pnpm dev`) | `ui_mode = medical-template` | execute Medical template copy flow (below) |
-| 2 | Generate a custom consultation UI in this project (Vue SFC based on the medical scenario) | `ui_mode = full-ui` | hand off to `../../trtc-topic/SKILL.md` (Read) with full-ui spec |
-| 3 | Add business logic only (composables / stores / types; customer provides UI) | `ui_mode = headless` | hand off to `../../trtc-topic/SKILL.md` (Read) with headless spec |
+| 2 | Add business logic only (composables / stores / types; customer provides UI) | `ui_mode = headless` | hand off to `../../trtc-topic/SKILL.md` (Read) with headless spec |
 
-(3 options; "Type something" is auto-provided by AskUserQuestion's Other — do NOT add it as an explicit option per Global rule #2.)
+(2 options; "Type something" is auto-provided by AskUserQuestion's Other — do NOT add it as an explicit option per Global rule #2.)
 
 **Medical template copy flow (option 1 selected):**
 
 1. Ask the user for the target project directory (or default to a sibling directory like `../medical-consultation/`).
 2. Copy `${CLAUDE_PLUGIN_ROOT}/skills/trtc/room-builder/templates/scenarios/medical-consultation/` to the target directory, preserving structure exactly as packaged.
 3. Do NOT read `../../trtc-topic/SKILL.md`, do NOT show scenario capabilities or a slice/module overview, and do NOT run A2-Q0.6. The template path is terminal and does not enter the slice state machine.
-4. Do NOT run `trtc_prepare_ui.py`, do NOT generate Vue SFCs, do NOT run `trtc_verify_ui.py` or any UI/medical verifiers.
+4. Do NOT generate Vue SFCs, do NOT run any UI/medical verifiers.
 5. Tell the user to use `pnpm install` for dependencies and `pnpm dev` for local development. Do NOT recommend `npm install` / `npm run dev` (this template starts much slower with npm and can show a blank first screen for a while).
 6. Set `ui_mode = 'medical-template'`, `current_step = 'template-copied'`, and `status = completed` in `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml`. Write session.
 7. Do NOT hand off to topic — the template is a complete, self-contained project; no step-by-step slice execution needed.
@@ -218,8 +226,8 @@ When the medical condition above is NOT met (i.e. `scenario != 1v1-video-consult
 
 | # | Option | Fills | Next |
 |---|--------|-------|------|
-| 1 | Official UI (recommended: use the official meeting components for fast integration, with full meeting UI out of the box — video, toolbar, member list, chat, etc. Tune buttons, business widgets, click interceptors, share links, and layouts through official APIs) | `ui_mode = official-roomkit` | execute official-roomkit fast path (no topic handoff) |
-| 2 | Business logic only (headless composables / stores / types; you write your own UI — good for projects that already have a design system) | `ui_mode = headless` | hand off to `../../trtc-topic/SKILL.md` (Read) with headless spec |
+| 1 | 用官方现成会议界面（推荐，最快）— 直接用官方会议组件,开箱即有完整界面（视频、工具栏、成员列表、聊天等），按钮/挂件/拦截/分享链接/布局通过官方 API 调整 | `ui_mode = official-roomkit` | execute official-roomkit fast path (no topic handoff) |
+| 2 | 只要业务逻辑代码,界面我自己写 — 生成可嵌入的 composables / stores / 类型,**不含任何会议界面**;适合已有设计系统或想完全自己掌控 UI 的项目 | `ui_mode = headless` | hand off to `../../trtc-topic/SKILL.md` (Read) with headless spec |
 
 (2 options; "Type something" is auto-provided by AskUserQuestion's Other — do NOT add it as an explicit option per Global rule #2.)
 
@@ -251,10 +259,10 @@ generate. Onboarding handles the entire generation inline:
 1. **Read these files (and only these):**
    - `${CLAUDE_PLUGIN_ROOT}/knowledge-base/slices/conference/web/official-roomkit-api.md` — complete API signatures, calling sequence, code example, MUST/MUST NOT
    - `${CLAUDE_PLUGIN_ROOT}/knowledge-base/slices/conference/web/official-roomkit-login-ui.md` — login page UI structure and styling constraints
-   - `${CLAUDE_PLUGIN_ROOT}/skills/trtc-onboarding/reference/mcp-usersig-generation.md` — UserSig credential protocol
+   - `${CLAUDE_PLUGIN_ROOT}/skills/trtc-onboarding/reference/usersig-handling.md` — UserSig credential protocol
 
 2. **Generate the project files in one shot:**
-   - Login page (collect/pre-fill sdkAppId, userId, userSig per the MCP protocol)
+   - Login page (collect/pre-fill sdkAppId + userId, placeholder userSig per the UserSig protocol)
    - Meeting room page (mount `ConferenceMainView`/`ConferenceMainViewH5` inside `UIKitProvider`, wire `conference.*` API calls)
    - Router config (login → meeting transition)
    - Any scenario-specific customizations (e.g., `setWidgetVisible` to hide/show widgets relevant to the chosen scenario)
@@ -268,18 +276,26 @@ generate. Onboarding handles the entire generation inline:
 
 4. **Save session:** `current_step = 'official-roomkit-done'`, `status = completed`.
 
+4.5. **UserSig fill guidance + run steps (MUST surface to user):** the login
+   code always uses a placeholder userSig (the skill never auto-generates one).
+   Include the **"如何获取并填入 UserSig"** handoff block from
+   `reference/usersig-handling.md` → "Completion handoff", with the real
+   file path / variable filled in. Direct the user to the TRTC console to
+   generate a test userSig. Also tell the user to install dependencies before
+   `dev` (`pnpm install` → `pnpm dev`, or the project's package manager).
+
 5. **Do NOT:**
    - Read any other slice file (room-lifecycle.md, device-control.md, etc.)
    - Hand off to `../../trtc-topic/SKILL.md`
    - Run the state machine (init_slice_queue, next_slice, etc.)
-   - Run `trtc_prepare_ui.py` or `trtc_verify_ui.py`
    - Ask A2-Q0.6 (auto-advance policy) — irrelevant without a slice loop
 
 ### If `ui_mode = headless` (topic path — state machine)
 
 1. **Handoff to `../../trtc-topic/SKILL.md` via Read.** Read `${CLAUDE_PLUGIN_ROOT}/skills/trtc-topic/SKILL.md` and execute its flow. (Plain Read is the current handoff convention — the §3.5 cross-skill `Skill()` tool handoff was walked back. The real constraints that prevent topic from being silently bypassed live in PreToolUse / Stop hooks and the on-disk state machine, not in how SKILL.md is loaded — so plain Read is sufficient.)
 
-   Scenario-driven step-by-step execution (reading the scenario file, walking the ordered slice list, loading per-step slices, pausing between steps, verification checklist) is topic's responsibility, not onboarding's. Onboarding A2 owns intent identification and scenario selection; once a scenario is picked, topic owns the drive.
+   Scenario-driven step-by-step execution (reading the scenario file, walking the ordered slice list, loading per-step slices, pausing between steps, verification checklist) is topic's responsibility, not onboarding's. For Vue3 Web no-UI Atomicx/API-direct requests, topic must first run its headless business-flow audit before generating code. Onboarding A2 owns intent identification and scenario selection; once a scenario is picked, topic owns the drive.
+   Do not mark `session_context.headless_business_flow_confirmed = true` in onboarding. Topic owns that confirmation after it asks the Atomicx no-UI business-flow questions and records the user's answers.
 2. Pass the scenario id and the current `session_context` (product, platform, credentials if collected, `target_features`, `project_state`) to topic as inputs. Topic will read `${CLAUDE_PLUGIN_ROOT}/${CLAUDE_PLUGIN_ROOT}/knowledge-base/{scenario.file}` itself.
 3. Save `session_context.current_step = 'topic-handoff'` and `session_context.scenario = <chosen-id>` so if the user later returns mid-flow, routing can resume topic from where it paused.
 4. Do NOT run A2-Q1 (module selection) or A2-Q3 (per-step execution) for scenario-driven flows — those paths are for `intent = integrate-feature` only.
@@ -292,6 +308,14 @@ If the chosen scenario has `status: planned` in the index: tell the user (in the
 
 **Trigger**: the user picked any scenario in A2-Q0 (i.e. `intent = integrate-scenario`).
 Skip for `integrate-feature` flows.
+
+**MUST ask — do NOT silently default.** This question must be explicitly asked
+before topic starts the slice loop. The "unset → treated as `pause_each`" rule
+below is a **fail-closed safety net for legacy/interrupted sessions only**, NOT
+a license to skip the question on a fresh scenario flow. Topic re-checks this at
+its Step 3 gate: if `intent = integrate-scenario` and `auto_advance_policy` is
+unset when the loop is about to start, topic bounces back here. (Skip only when
+`ui_mode = official-roomkit` or `medical-template`, which have no slice loop.)
 
 **Purpose**: decide how topic paces the slice loop after `apply.py` passes —
 either pause and ask the user 继续? after each slice, or let `apply.py`
@@ -320,9 +344,38 @@ values are treated as `pause_each` by topic — fail closed.
 
 Trigger: `intent = integrate-feature`, or the user chose "pick individual features" in A2-Q0, or A2-Q0 was skipped.
 
-Question text: "Which modules do you want to integrate? (multi-select; login is required as the foundation)"
+**If `product = conference`:** A2-Qpre has already shown the capability overview. Now present a grouped module selection that mirrors the delivery-unit structure the user just saw. This ensures the selection interaction is visually consistent with the overview — users pick from the same categories they just read about.
 
-Options are **product-dependent**. Pull from `${CLAUDE_PLUGIN_ROOT}/knowledge-base/index.yaml` slices filtered by product. Example for `product = live`:
+Question text: "Which capability groups do you want to integrate? (multi-select; [会议基础链路] is required as the foundation)"
+
+Use `AskUserQuestion` with `multiSelect: true`. Group options by delivery units from `${CLAUDE_PLUGIN_ROOT}/skills/trtc-topic/references/execution-units.yaml` → `scenarios.general-conference.delivery_units`. Map each delivery unit to one option; the option label is the unit title, the option description lists the included slices by name. Example:
+
+| # | Option | Description (auto-generated from unit title + slice names) | Slices |
+|---|--------|-------|--------|
+| 1 | 会议基础链路（必选） | 登录与鉴权 + 房间创建、加入、离开与结束 | conference/login-auth, conference/room-lifecycle |
+| 2 | 会前准备 | 入会前设备检查 + 设备控制 | conference/prejoin-check, conference/device-control |
+| 3 | 音视频与布局 | 参会人列表与状态 + 视频布局 + 网络质量 | conference/participant-list, conference/video-layout, conference/network-quality |
+| 4 | 会中协作 | 屏幕分享 + 会中聊天 | conference/screen-share, conference/room-chat |
+| 5 | 成员与会控 | 参会人管理与角色治理 + 会中呼叫 | conference/participant-management, conference/room-call |
+| 6 | 预约会议 | 预约会议 | conference/room-schedule |
+| 7 | 视频增强 | 美颜效果 + 虚拟背景 | conference/beauty-effects, conference/virtual-background |
+
+> **Note**: This table shows 7 options which exceeds `AskUserQuestion`'s 4-option cap. Apply the **A2-Q1 conference grouping merge** below to reduce to 4 options.
+
+### A2-Q1 conference grouping merge
+
+When `product = conference`, the 7 delivery units must be merged into 4 options to fit `AskUserQuestion`'s cap. Use this fixed merge:
+
+| # | Option | Merged delivery units | Slices |
+|---|--------|----------------------|--------|
+| 1 | 会议基础 + 会前准备（必选） | foundation + prejoin | conference/login-auth, conference/room-lifecycle, conference/prejoin-check, conference/device-control |
+| 2 | 音视频 + 协作 + 会控 | media + collaboration + moderation | conference/participant-list, conference/video-layout, conference/network-quality, conference/screen-share, conference/room-chat, conference/participant-management, conference/room-call |
+| 3 | 预约会议 | schedule | conference/room-schedule |
+| 4 | 视频增强（美颜 + 虚拟背景） | effects | conference/beauty-effects, conference/virtual-background |
+
+Option 1 is always selected (required foundation). Options 2–4 are multi-select.
+
+**If `product = live`** (or any non-conference product): use the existing flat option list. Pull from `${CLAUDE_PLUGIN_ROOT}/knowledge-base/index.yaml` slices filtered by product. Example for `product = live`:
 
 | # | Option | Slice |
 |---|--------|-------|
@@ -339,21 +392,220 @@ Options are **product-dependent**. Pull from `${CLAUDE_PLUGIN_ROOT}/knowledge-ba
 
 Use `AskUserQuestion` with `multiSelect: true`.
 
+### A2-Q1.5 — Business decisions collection (per-slice)
+
+After A2-Q1 multi-select completes, before advancing to A2-Q2: for each slice in the chosen list, run a **business-decisions collection** pass to fill in the open variables that code generation needs. This step is governed by Hard rule #13 in `../SKILL.md`.
+
+**Why this exists:** A slice describes **which APIs** to call. But generating concrete code requires answering business-side questions that are independent of the API surface — e.g. for `conference/login-auth` the slice tells you to call `login(sdkAppId, userId, userSig)`, but it doesn't tell you where `userSig` comes from, what `userId` is mapped from, or where to navigate when the session is lost. Guessing these defaults produces code the user has to rip out. Asking takes one extra `AskUserQuestion` per decision and saves the rewrite.
+
+**The decision list comes from each slice's frontmatter, NOT from a hardcoded table here.** Onboarding reads `business_decisions:` in the slice's frontmatter and asks one `AskUserQuestion` per entry. When a slice author adds / removes / changes decisions, the rule follows automatically — no edit needed in this skill.
+
+**Slice frontmatter contract:**
+
+```yaml
+---
+id: conference/login-auth
+platform: web
+business_decisions:
+  - key: usersig_source              # YAML key — used as session_context lookup
+    tier: blocking                   # blocking (default) | deferrable — see "Decision tiers" below
+    question: "UserSig 从哪里获取？"   # exact question shown to user (translate at runtime)
+    options:
+      - { label: "后端签发（生产推荐）", value: "backend" }
+      - { label: "控制台临时生成（开发期）", value: "console" }
+    # optional fields:
+    multi_select: false              # default false; true → multi-select question
+    destructive_subset: false        # default false; true → ask "是否需要破坏性操作？" gate first
+    depends_on:                      # only ask this decision if another decision matches
+      key: creation_pattern          # ex: "scheduled_features" only asked if "creation_pattern includes scheduled"
+      value: ["scheduled", "both"]
+  - key: on_session_lost
+    tier: deferrable                 #异常/边界路径 → 不阻塞主流程
+    default: redirect-login          # deferrable 项 MUST 提供推荐默认值
+    question: "登录态失效后页面如何处理？"
+    options:
+      - { label: "跳回登录页（推荐默认）", value: "redirect-login" }
+      - { label: "后台静默重连", value: "auto-refresh" }
+      - { label: "弹窗让用户决定", value: "prompt-user" }
+  - key: management_features          # multi-select example with a baseline
+    tier: blocking
+    multi_select: true
+    baseline: ["list"]               # always-generated values, NOT shown as options
+    question: "主持人需要哪些会控权限？（参会人列表默认展示）"
+    options:                         # only the user-selectable extras appear here
+      - { label: "管控单个成员", value: "single-control" }
+      - { label: "全场管控", value: "all-room" }
+      - { label: "成员身份管理", value: "role-and-kick" }
+---
+```
+
+**Baseline values (`baseline` field, multi-select only):**
+
+某些多选决策里存在"基础项"——它是该能力的前提，几乎总要生成（如 `participant-management` 的成员列表 `list`）。把基础项和真正的可选项放进同一个多选框，会造成颗粒度不一致（用户在"前提"和"权限"之间纠结）。
+
+解决办法：用 `baseline: [...]` 声明这些始终生成的值。规则：
+- `baseline` 里的值 **不作为 `options` 展示**，A2-Q1.5 不会让用户勾选它们。
+- 采集时，`session_context.business_decisions[<slice-id>][<key>]` 的最终值 = `baseline` ∪ 用户在 `options` 里勾选的值。
+- 即使用户一个 option 都没勾，baseline 值依然写入（保证基础能力被生成）。
+- 仅对 `multi_select: true` 的决策有效；单选决策忽略此字段。
+- 问题文案应点明基础项已默认提供（如"参会人列表默认展示"），避免用户以为漏选。
+
+**Decision tiers (`tier` field):**
+
+每个 `business_decisions` 项可声明一个 `tier`，决定"用户没回答时怎么办"：
+
+| tier | 含义 | 未回答时的行为 |
+|------|------|---------------|
+| `blocking`（默认，可省略） | 决定主流程走哪条代码分支（如 `usersig_source`、`userid_strategy`、`roomid_origin`）。不答就无法正确生成主流程。 | **维持铁律：缺值则 topic STOP，回 A2-Q1.5 问完再继续。** |
+| `deferrable` | 只影响异常/边界路径（如 `on_session_lost`、`passive_exit_target`），不影响登录→建房→进会主链路能否跑通。 | **用 `default` 值先生成 + 注入 `// TODO: 确认<决策项>策略，当前用推荐默认值 <default>` 注释**，主流程跑起来后作为 next step 回填。 |
+
+**`deferrable` 契约（slice 作者必须遵守）：**
+- 声明 `tier: deferrable` 的项 **MUST 同时提供 `default`**（取 `options` 里的某个 `value`，通常是标注"推荐"的那个）。缺 `default` 的 deferrable 项视为契约错误，apply gate 抛错给 slice 作者。
+- `deferrable` 只能用于异常/边界决策。任何会改变主流程分支结构的决策（建不建房、UserSig 来源、是否匿名）必须是 `blocking`。
+- `default` **不是"AI 猜的值"**，而是 slice 作者显式声明、且会通过 TODO 注释告知用户的推荐值——这与"先生成默认代码、等用户报错再改"的反模式有本质区别（后者是无声的、错了用户才发现）。
+
+A2-Q1.5 采集时，`deferrable` 项**仍然会问**（顺序上建议放在该 slice 所有 `blocking` 项之后）；只有当用户**显式跳过 / 未答**时才回退到 `default`。也就是说：能问到就用用户的答案，问不到才用 default 兜底跑通主流程。
+
+**A2-Q1.5 execution algorithm:**
+
+The algorithm groups questions by **delivery unit** (from `${CLAUDE_PLUGIN_ROOT}/skills/trtc-topic/references/execution-units.yaml`) for visual coherence — users see "成员与会控" as a section heading covering 3 slices, not 8 disconnected questions. Storage stays per-slice in `session_context.business_decisions[<slice-id>]`; only the question-asking order is grouped.
+
+```
+Build the question plan:
+  units = execution-units.yaml[scenario].delivery_units
+  ordered_groups = []
+  consumed_slices = set()
+
+  For each unit in units (in declared order):
+      group_slices = [s for s in unit.slices if s in confirmed_plan]
+      If group_slices is empty: skip this unit (none of its slices selected).
+      ordered_groups.append({ title: unit.title, slices: group_slices })
+      consumed_slices.update(group_slices)
+
+  orphan_slices = [s for s in confirmed_plan if s not in consumed_slices]
+  If orphan_slices: ordered_groups.append({ title: "其他", slices: orphan_slices })
+
+Run the questionnaire:
+  For each group in ordered_groups:
+      Show group.title as a section heading to the user (one short line, e.g. "—— 成员与会控 ——").
+      For each slice in group.slices:
+          Read slice frontmatter business_decisions[]
+          If empty / absent: skip this slice (no decisions needed).
+          Sort: ask all tier=blocking decisions first, then tier=deferrable ones.
+          For each decision in business_decisions[]:
+              If session_context.business_decisions[<slice-id>][<key>] already set:
+                  skip (already answered in earlier turn — never re-ask)
+                  continue
+              If decision.depends_on is set:
+                  check: does session_context.business_decisions[<slice-id>][<dep.key>]
+                         match dep.value?
+                  no → skip this decision
+              If decision.destructive_subset = true:
+                  first ask "是否需要破坏性操作（{decision label}）？" with 是/否
+                  no → set value = []
+                      continue
+                  yes → fall through to options multi-select
+              AskUserQuestion(decision.question, decision.options, multi_select)
+              If user answered → persist pick to session_context.business_decisions[<slice-id>][<key>]
+                  If decision.multi_select AND decision.baseline is set:
+                      final_value = decision.baseline ∪ user_picks   # baseline always included
+                      persist final_value (even if user_picks is empty)
+              If user explicitly skipped / deferred AND decision.tier == "deferrable":
+                  do NOT persist a value (leave the key unset)
+                  → topic will fall back to decision.default at generation time + inject a TODO
+              If user skipped AND decision.tier == "blocking":
+                  # baseline-only multi-select: if a baseline exists, skipping = baseline alone (valid)
+                  If decision.multi_select AND decision.baseline is set:
+                      persist decision.baseline as the value
+                      continue
+                  Else:
+                      cannot proceed — re-ask (blocking decisions must be answered)
+```
+
+**Tier-aware skipping:** `blocking` 决策必须答（用户跳过就重问）；`deferrable` 决策允许用户跳过——跳过时不写入 session，由 topic 在生成代码时回退到 frontmatter 的 `default` 并注入 TODO 注释。这让"主流程先跑通、异常处理后补"成为可能，同时不违反"不无声猜值"的铁律（default 是显式声明 + TODO 可见）。
+
+**Baseline merge:** 对带 `baseline` 的多选决策，存入 session 的最终值始终是 `baseline ∪ 用户勾选`。`baseline` 里的值不在 `options` 出现、用户无法取消，保证基础能力（如成员列表）总被生成。即使用户一个额外项都没选，session 里也会写入 baseline 值（而非空数组）。
+
+**`decision_constraints`（跨 key 组合约束）：** 部分 slice 在 frontmatter 里除 `business_decisions` 外还声明 `decision_constraints:`，描述同一 slice 内**多个决策值之间**的组合规则。每条含 `when`（触发条件）+ 下列之一：
+
+| 字段 | 含义 | A2-Q1.5 消费方式 |
+|------|------|-----------------|
+| `forbid: {key: value}` | `when` 成立时禁止的组合 | 用户答出该组合时，**不持久化**，提示冲突原因（取 `reason`）并**重问**冲突的那个 key，引导改选 |
+| `adjust: {key: {disable_option, prefer}}` | `when` 成立时调整另一 key 的选项 | 提问该 key **之前**先检查：若 `when` 已成立，从 `options` 中灰掉 `disable_option`，并把 `prefer` 列表的首项作为推荐默认 |
+
+例（`conference/room-lifecycle`）：`roomid_origin = join-only` 时，① 禁止 `creation_pattern = both`（选到则重问 creation_pattern）；② 提问 `passive_exit_target` 前灰掉 `lobby` 选项、默认推 `login`。约束校验在 `AskUserQuestion` 持久化之后、进入下一 key 之前执行；`adjust` 在目标 key 提问之前执行。topic 生成代码与 apply gate 也共享这些约束。
+
+**Section heading display:** keep it minimal — one short line above the next AskUserQuestion call, in the user's language. Examples: `—— 会议基础链路 ——`, `—— 成员与会控 ——`, `—— 视频增强 ——`. Do NOT show a full progress bar or "step N of M" — the questions themselves are the progress.
+
+**Scenario absence fallback:** if the session's scenario is not present in `execution-units.yaml`, OR `intent = integrate-feature` (single-feature mode, no scenario), skip the grouping pass entirely and ask in `confirmed_plan` order without section headings. The grouping is purely UX sugar — its absence does not change which questions get asked.
+
+**4-option cap handling:** If `decision.options` has more than 4 entries, slice authors should split them into multiple `business_decisions` entries (group by impact tier or sub-domain) rather than one mega-question. Onboarding never silently truncates options.
+
+**Persistence:** Results live under `session_context.business_decisions` in `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml`:
+
+```yaml
+session_context:
+  business_decisions:
+    conference/login-auth:
+      usersig_source: "console"
+      userid_strategy: "direct"
+      on_session_lost: "redirect-login"
+    conference/room-lifecycle:
+      roomid_origin: "frontend"
+      creation_pattern: "instant"
+      passive_exit_target: "lobby"
+    conference/participant-management:
+      management_features: ["list", "single-control", "all-room"]
+      # "list" is baseline (always present, not a user option); "single-control"/"all-room" were picked.
+      # "role-and-kick" NOT in array → topic skips setAdmin/revokeAdmin/transferOwner/kickParticipant entirely
+    conference/room-schedule:
+      schedule_features: ["list", "modify", "events"]
+      # "list" is baseline (always present, not a user option); "modify"/"events" were picked.
+      # "password" NOT in array → 密码字段/校验不生成
+```
+
+**Topic-side contract (Step 3, governed by topic G8):** when generating code for a slice, topic MUST consult `session_context.business_decisions[<slice-id>]` and tailor the output:
+
+- For decisions with `value: "X"` (single-select): generate code matching that branch.
+  - `usersig_source = "backend"` → emit `fetch('/api/conference/usersig')` skeleton + TODO; `usersig_source = "console"` → emit placeholder `'YOUR_USERSIG'` + console-link comment（用户需自行到 TRTC 控制台生成测试 UserSig 并填入，skill 不自动签发）.
+  - `roomid_origin = "frontend"` → emit `createAndJoinRoom` flow; `roomid_origin = "backend-precreated"` → emit `joinRoom` only flow with backend fetch skeleton.
+- For decisions with `value: [...]` (multi-select / multi_select=true): generate ONLY APIs whose ids appear in the array. APIs absent MUST NOT be exported, imported, or rendered as UI entry points.
+
+**If a slice has `business_decisions:` but `session_context.business_decisions[<slice-id>]` is missing or partial:** behavior depends on the missing decision's `tier`:
+- **`blocking` 缺值** → topic MUST stop code generation and bounce back to A2-Q1.5 to fill the gap. Do not "default to safe values" — silent defaults are exactly the failure mode this rule prevents.
+- **`deferrable` 缺值** → topic does NOT stop. Use the frontmatter `default` value to generate the branch, and inject a `// TODO: 确认<decision-key>策略（当前用推荐默认值 <default>，主流程跑通后可调整）` comment at the relevant code site. This keeps the main flow runnable while flagging the deferred decision visibly.
+
+**MUST NOT:**
+- Do NOT bundle multiple decisions into a single `AskUserQuestion` (option semantics get muddled, hits the 4-option cap).
+- Do NOT skip A2-Q1.5 because "the user seems experienced" or "the slice looks simple" — every slice with `business_decisions` MUST be asked.
+- Do NOT generate UI containers (e.g. a panel that conditionally renders every governance API based on a runtime flag) — unselected APIs MUST be absent from source, not hidden behind v-if.
+- Do NOT hardcode the decision list inside `onboarding` — the registry of "what to ask" is each slice's frontmatter, not a table here.
+
+**Slice author checklist** (when authoring or editing a slice):
+- Identify every variable in the generated code that depends on business choice (where does X come from / which subset of APIs / how to handle Y when it fails).
+- Add one `business_decisions` entry per variable.
+- **Assign a `tier`**: if the decision changes the main-flow code structure (credential source, build-room-or-not, anonymous-or-not) → `blocking` (default). If it only affects error/edge handling that doesn't block the main flow from running (session-lost handler, passive-exit target) → `deferrable`, and you MUST also provide a `default` value.
+- Group destructive operations behind `destructive_subset: true` so they get a yes/no gate before the option list.
+- Use `depends_on` when one decision is only meaningful in the context of another (e.g. `schedule_features` only matters when `creation_pattern` includes scheduled rooms).
+
+**Apply gate cross-check:** apply skill verifies generated code consistency with `session_context.business_decisions`. Concrete checks (non-exhaustive):
+- If generated code contains `userSig: 'YOUR_USERSIG'` but slice has `business_decisions: usersig_source` → user must have picked `"console"`; if they picked `"backend"` → fail with mismatch error.
+- If generated code calls `kickParticipant`/`setAdmin`/`transferOwner` but `business_decisions.management_features` array doesn't contain `"role-and-kick"` → fail. (Same pattern for `single-control` / `all-room` archetypes.)
+- If a slice's frontmatter has no `business_decisions` field but generated code contains placeholders that imply a business choice (e.g. hardcoded `'YOUR_USERSIG'`, hardcoded `roomId`) → emit a warning suggesting the slice author add a `business_decisions` entry.
+- If a `business_decisions` entry declares `tier: deferrable` but has no `default` field → fail with a slice-author contract error (deferrable decisions MUST carry a default).
+
 ## A2-Q2 — Credentials
 
-**Before showing the manual credential prompt**, run the MCP credential detection
-protocol: Read `reference/mcp-credential-detection.md` and follow its Steps 1–4.
-If MCP detection succeeds (user confirms the detected credentials), skip the
-manual prompt below and proceed directly to A2-Q3. Only fall through to the
-A1-Q1 format if MCP detection does not apply (Step 4 Fallback).
+Ask the user for their **SDKAppID** only — the skill does NOT sign UserSig, so do
+NOT ask for the SecretKey, and there is no MCP auto-detection of credentials.
+Reuse the A1-Q1 SDKAppID prompt (see `reference/path-a1-demo.md`). Skip entirely
+if `credentials.sdk_app_id_provided` is `true` in the session file.
 
-Reuse A1-Q1 format (see `reference/path-a1-demo.md`) as the manual fallback. Skip entirely if `credentials.sdk_app_id_provided` and `credentials.secret_key_provided` are both `true` in the session file.
-
-**Important**: the actual SDKAppID / SecretKey values are **never** written to `${CLAUDE_PROJECT_DIR}/.trtc-session.yaml`. After the user pastes them (or confirms MCP-detected values), hold them in conversation context only. Update the session file's `credentials.sdk_app_id_provided` / `credentials.secret_key_provided` booleans to `true` — and persist those booleans as part of the next Checkpoint write (do not trigger an extra Write just for credentials).
+**Important**: SDKAppID is not a secret — after the user provides it, write the numeric value to `credentials.sdkappid` in the session file at the next Checkpoint, and set `credentials.sdk_app_id_provided` to `true` (do not trigger an extra Write just for credentials). The test UserSig itself is obtained by the user from the TRTC console at integration time (see `reference/usersig-handling.md`).
 
 ## A2-Q3 — Per-step progression
 
-### Login step enhancement (MCP-aware)
+### Login step enhancement
 
 When the current step's slice is `{product}/login-auth` (or any slice whose
 implementation involves `login()` / `LoginStore` / TIM login / TRTC
@@ -361,33 +613,33 @@ implementation involves `login()` / `LoginStore` / TIM login / TRTC
 
 **⚠️ BLOCKING GATE — 必须在生成任何登录代码之前完成：**
 
-1. Read `reference/mcp-usersig-generation.md` and follow its Generation Protocol.
-2. Determine the UserSig 来源：MCP available → call `get_usersig`；MCP unavailable → use placeholders.
+1. Read `reference/usersig-handling.md` and follow its Generation Protocol.
+2. Emit a placeholder userSig + console-handoff instructions. The skill does NOT
+   auto-generate UserSig (no MCP, no client-side signing).
 3. **If this protocol is not followed, the generated login code MUST NOT be written to disk.**
 
 This gate ensures:
-- A real, working test userSig is embedded for immediate testing (if MCP available)
+- A placeholder userSig with clear console-fill instructions is emitted
 - Input fields remain available for custom userID/userSig at runtime
-- The generated login page works out-of-the-box without manual credential setup
 - **No client-side signing code is ever generated** (no `crypto-js`, no `pako`, no `SecretKey` in source)
 
-If MCP is not available, follow the Fallback section in `mcp-usersig-generation.md`
-(placeholders + instruction comments).
+Follow the Generation Protocol in `usersig-handling.md` (placeholders +
+console-handoff instruction comments).
 
 **Violation self-check (same weight as apply gate):** If your about-to-write login
 code contains `HmacSHA256`, `crypto-js`, `pako`, `SecretKey` in a non-comment
 assignment, `generateUserSig`, or creates a file matching `**/usersig.*` — you
-are violating this gate. STOP, discard, re-read `reference/mcp-usersig-generation.md`,
+are violating this gate. STOP, discard, re-read `reference/usersig-handling.md`,
 and regenerate.
 
 ### Per-step execution
 
-After writing code for each step, call `../../trtc-apply/SKILL.md` as described in **"Calling apply"** above. Only report the step done after `response.status` is `pass` (or `partial` with no `critical` severity issues). Summarize the outcome to the user using this template:
+After writing code for each step, topic runs `apply.py` (the structural gate, see **"About apply"** above). Only report the step done after apply passes (state → `apply_passed`). Summarize the outcome to the user using this template:
 
 ```
 Step {n} ({slice name}) done.
 Changes: {N files added, M files modified}. Did not touch {AppDelegate.swift / main.ts / etc.}.
-Compile check: passed — `{compile_command}` exit 0.
+Structural gate: passed ({K} slice entries wired up). Verify in your project by running it.
 ```
 
 **Persist session state** (see `SKILL.md` § Session context → Checkpoints). After a step passes apply:
@@ -398,7 +650,7 @@ Compile check: passed — `{compile_command}` exit 0.
 
 **First Write of the session** (i.e. right after Stage 1 calibration confirmed, before this step executes): create the file with `status: active`, all inferred fields filled, and trigger the `.gitignore` auto-update flow described in `SKILL.md` § Session context.
 
-If apply returns `fail`, do NOT write this summary **and do NOT advance `current_step` in the session file**. Follow the retry rules in **"Calling apply → Acting on retry_hint"** (max 2 apply calls per step). If the step ultimately gives up, surface a message framed as "I hit a snag on step {n}" — never "apply skill said X" — and list what was tried.
+If apply fails (state → `apply_failed`), do NOT write this summary **and do NOT advance `current_step` in the session file**. Re-read the slice, regenerate / patch the code based on the failed rule text in the evidence JSON, and re-run apply. The Stop hook keeps the loop alive until apply passes. If you genuinely can't get it to pass, surface a message framed as "I hit a snag on step {n}" — never "apply skill said X" — and list what was tried.
 
 ### Auto-advance rules (default behavior)
 
@@ -436,97 +688,6 @@ Question text: "Integration finished. What's next?"
 | # | Option | Action |
 |---|--------|--------|
 | 1 | Add another feature | loop back to A2-Q1 (as single-feature mode); session `status` stays `active` |
-| 2 | Fine-tune the UI (theme / layout) | go to A2-Q4-UI (controlled-adjustment sub-flow); session `status` stays `active` |
-| 3 | I'm good for now | set `status: completed`, Write session, end onboarding cleanly |
-| 4 | Type something | free-text |
+| 2 | I'm good for now | set `status: completed`, Write session, end onboarding cleanly |
+| 3 | Type something | free-text |
 
-Option 2 is only shown when `product = conference` AND `ui_mode = full-ui`.
-Headless integrations have no generated UI for onboarding to fine-tune —
-the user edits their own UI directly. For any other product / mode, hide
-option 2 entirely.
-
-### A2-Q4-UI — Controlled UI adjustment sub-flow
-
-**Triggered when**: A2-Q4 option 2. Runs AFTER a full integration has passed
-apply and `ui_mode = full-ui`. Intent: let users fine-tune the UI without
-breaking the business logic or SDK contract.
-
-**Core principle**: every adjustment belongs to a declared *class* with
-explicit scope and forbidden operations. No free-form UI editing — the user
-picks a class, AI operates within that class's boundaries.
-
-Question text: "What aspect do you want to adjust?"
-
-| # | Class | Scope | Risk |
-|---|---|---|---|
-| 1 | Theme tokens | `overrides.css` only (brand color, radius, font, dark mode) | Low |
-| 2 | Layout | `layout.css` only (panel / toolbar positions) | Medium |
-| 3 | I need something else | Free-text; AI classifies and re-routes, or declines if it doesn't fit class 1 / 2 | — |
-| 4 | Done | Return to A2-Q4 | — |
-
-Replacing a single generated element with a user-provided component is
-deliberately NOT offered in this release — see pending_todos for the plan.
-
-#### Class 1: Theme tokens (safe path)
-
-**Allowed**:
-- Run `../../trtc/room-builder/uikit/scripts/generate-theme-overrides.py` with user-specified flags
-- Create or update `overrides.css` in the user's project
-
-**Forbidden**:
-- Editing any `.vue` file
-- Editing `uikit/components/*.css`
-- Adding inline `style` attributes in generated code
-
-**Flow**: ask the user which tokens to change (primary color / radius scale /
-font family / dark mode). Compose the script invocation, run it, report the
-diff of `overrides.css`. Call apply with `mode: quick`. Fail the adjustment
-if apply detects any `.vue` file changed or any hardcoded color appears in
-the diff.
-
-**After success**: set `ui_customizations.theme_overridden = true`. Persist
-at the next checkpoint write.
-
-#### Class 2: Layout (medium path)
-
-**Allowed**:
-- Modifying `layout.css` (grid-area, side-panel position, toolbar slot positions)
-- Renaming slot positions in the template, as long as the slot name is preserved
-
-**Forbidden**:
-- Changing any class name in `<template>` except grid-area classes
-- Removing or modifying any node with `v-for` / `@click` / `:class` / `v-model`
-- Editing `<script setup>`
-- Changing `import` statements
-
-**Flow**: ask the user the layout change (e.g. "move members panel to the left",
-"put toolbar at the top"). Generate the edits to `layout.css`. Call apply with
-`mode: full`. Required diff checks:
-1. All original `v-*` directives and event bindings must be preserved
-2. All composable imports must be unchanged
-3. Any diff that modifies a reactive binding → rejected with a clear explanation
-   ("layout adjustment cannot change business bindings; if you want to replace
-   an element, that requires a different flow that is not available yet.")
-
-**After success**: set `ui_customizations.layout_modified = true`. Persist
-at the next checkpoint write.
-
-#### Class 3: Free-text fallback
-
-When the user picks option 3 or free-texts a request:
-- Matches class 1 intent (colors / radius / font / dark mode) → route to class 1
-- Matches class 2 intent (panel position / layout) → route to class 2
-- Requests replacing an element with a custom component → decline with: "Custom
-  component replacement is not available in this release — it requires additional
-  safety checks for RTC mount points and reactive bindings that we're still
-  building. You can manually edit the files if needed; the generated code is
-  under `src/trtc/views/` and the composables are under `src/trtc/composables/`."
-- Any other request → decline politely, restate classes 1 and 2.
-
-Never perform free-form UI edits. The two classes above are the only sanctioned
-operations.
-
-#### Loop
-
-After each successful adjustment, ask: "Apply and continue, or adjust more?" —
-re-show A2-Q4-UI options if the user wants more, otherwise return to A2-Q4.

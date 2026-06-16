@@ -7,7 +7,7 @@ but disagree in integration.
 
 Flow:
 
-    init_slice_queue → next_slice status (cursor at slice 0)
+    init_slice_queue -> next_slice status (cursor at execution step 0)
         → gate_slice_read (current slice OK, next slice BLOCKED)
         → next_slice advance mark_slice_read
         → gate_slice_write (project file ALLOWED)
@@ -68,12 +68,13 @@ def _stop(session_path: Path) -> subprocess.CompletedProcess:
     )
 
 
-# Same VUE we used in test_apply_cli.py — satisfies all login-auth MUST rules.
+# Same VUE we used in test_apply_cli.py — wires up the login-auth entry
+# (useLoginState), so the entry-symbol gate passes.
 _PASSING_LOGIN_VUE = '''<template><div /></template>
 <script setup lang="ts">
 import { useLoginState, LoginEvent } from "@trtc/tuikit-atomicx-vue3";
 const { login, setSelfInfo, subscribeEvent } = useLoginState();
-await login({ sdkAppId: 0, userId: "u", userSig: "x" });
+await login({ sdkAppId: 0, userId: "u", userSig: "x", scene: 5001 });
 setSelfInfo({ nickName: "Alice" });
 subscribeEvent(LoginEvent.onLoginExpired, () => {});
 subscribeEvent(LoginEvent.onKickedOffline, () => {});
@@ -92,8 +93,8 @@ def test_full_slice_loop_through_real_scripts(session_factory, project_factory):
     r = _run_cmd(INIT, "--session", session)
     assert r.returncode == 0, r.stderr
     data = yaml.safe_load(session.read_text())
-    assert data["current_slice_index"] == 0
-    assert data["current_slice_state"] == "not_started"
+    assert data["current_execution_index"] == 0
+    assert data["current_execution_state"] == "not_started"
 
     # 2. status.
     r = _run_cmd(NEXT, "--session", session, "--json", "status")
@@ -154,7 +155,7 @@ def test_full_slice_loop_through_real_scripts(session_factory, project_factory):
 
     # State must be apply_passed.
     data = yaml.safe_load(session.read_text())
-    assert data["current_slice_state"] == "apply_passed"
+    assert data["current_execution_state"] == "apply_passed"
 
     # 10. stop hook: ALLOWED now.
     r = _stop(session)
@@ -208,7 +209,7 @@ def test_full_slice_loop_through_real_scripts(session_factory, project_factory):
 
 
 def test_apply_failure_path(session_factory, project_factory):
-    """Code that doesn't satisfy MUST rules → apply_failed → Stop blocked → Edit allowed."""
+    """Code that never wires up the slice entry → apply_failed → Stop blocked → Edit allowed."""
     session = session_factory(confirmed_plan=["conference/login-auth"])
     proj = project_factory()
     target = proj / "src" / "views" / "MeetingRoom.vue"
@@ -216,11 +217,11 @@ def test_apply_failure_path(session_factory, project_factory):
     _run_cmd(INIT, "--session", session)
     _run_cmd(NEXT, "--session", session, "advance", "mark_slice_read")
 
-    # Write incomplete code (only login(), missing setSelfInfo + events).
+    # Write real code that never references the login-auth entry (useLoginState).
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        '<template><div /></template>\n<script setup>\nimport { useLoginState } from "x";\n'
-        'const { login } = useLoginState();\nawait login({ sdkAppId: 0, userId: "u", userSig: "x" });\n</script>'
+        '<template><div /></template>\n<script setup lang="ts">\n'
+        'import { ref } from "vue";\nconst ready = ref(true);\n</script>'
     )
 
     _run_cmd(NEXT, "--session", session, "advance", "mark_code_written")
@@ -228,7 +229,7 @@ def test_apply_failure_path(session_factory, project_factory):
     r = _run_cmd(APPLY, "--slice", "conference/login-auth", "--session", session, "--project", proj)
     assert r.returncode == 1
     data = yaml.safe_load(session.read_text())
-    assert data["current_slice_state"] == "apply_failed"
+    assert data["current_execution_state"] == "apply_failed"
 
     # Stop blocked.
     r = _stop(session)
@@ -272,8 +273,8 @@ def test_auto_advance_loop_skips_user_confirm(session_factory, project_factory):
 
     # Cursor should be on slice 1, not_started — no user confirm needed.
     data = yaml.safe_load(session.read_text())
-    assert data["current_slice_index"] == 1
-    assert data["current_slice_state"] == "not_started"
+    assert data["current_execution_index"] == 1
+    assert data["current_execution_state"] == "not_started"
 
     # Read gate now allows slice 1's file (and blocks slice 0's).
     r = _gate(GATE_READ, {
@@ -291,14 +292,14 @@ def test_auto_advance_loop_skips_user_confirm(session_factory, project_factory):
     # Stop hook: in not_started → allowed.
     assert _stop(session).returncode == 0
 
-    # Slice 1: write code that does NOT satisfy room-lifecycle MUST rules,
-    # confirm apply still pauses on failure even with auto-advance enabled.
+    # Slice 1: write code that never wires up the room-lifecycle entry
+    # (useRoomState); apply must still pause on failure even with auto-advance.
     target.write_text("<template><div /></template>\n<script setup>\n// no room APIs\n</script>")
     assert _run_cmd(NEXT, "--session", session, "advance", "mark_slice_read").returncode == 0
     assert _run_cmd(NEXT, "--session", session, "advance", "mark_code_written").returncode == 0
     r = _run_cmd(APPLY, "--slice", "conference/room-lifecycle", "--session", session, "--project", proj)
     assert r.returncode == 1
     data = yaml.safe_load(session.read_text())
-    assert data["current_slice_state"] == "apply_failed"
+    assert data["current_execution_state"] == "apply_failed"
     # Stop is still blocked on apply_failed — the safety net survives.
     assert _stop(session).returncode == 2

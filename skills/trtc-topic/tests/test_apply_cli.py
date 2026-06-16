@@ -4,7 +4,8 @@ Contract:
 
     apply.py --slice <slice_id> [--session PATH] [--project PATH]
 
-Runs MUST-rule grep over the project's src/ tree for the given slice, writes
+Checks that the project has real source AND that each slice's entry symbol
+(its composable/component) appears as real code in src/, writes
 ``.trtc-apply-evidence/{slice_safename}.json`` next to the session file, and
 advances the state machine:
 
@@ -42,6 +43,13 @@ def _run_apply(slice_id: str, session_path: Path, project_root: Path | None = No
     return subprocess.run(args, text=True, capture_output=True)
 
 
+def _run_apply_unit(unit_id: str, session_path: Path, project_root: Path | None = None) -> subprocess.CompletedProcess:
+    args = [sys.executable, str(APPLY_SCRIPT), "--unit", unit_id, "--session", str(session_path)]
+    if project_root is not None:
+        args += ["--project", str(project_root)]
+    return subprocess.run(args, text=True, capture_output=True)
+
+
 def _seed_to_code_written(session_path: Path) -> None:
     state_machine.init_queue(session_path)
     state_machine.advance(session_path, "mark_slice_read")
@@ -52,18 +60,41 @@ _PASSING_VUE = '''<template><div /></template>
 <script setup lang="ts">
 import { useLoginState, LoginEvent } from "@trtc/tuikit-atomicx-vue3";
 const { login, setSelfInfo, subscribeEvent } = useLoginState();
-await login({ sdkAppId: 0, userId: "u", userSig: "x" });
+await login({ sdkAppId: 0, userId: "u", userSig: "x", scene: 5001 });
 setSelfInfo({ nickName: "Alice" });
 subscribeEvent(LoginEvent.onLoginExpired, () => { /* refresh */ });
 subscribeEvent(LoginEvent.onKickedOffline, () => { /* re-login */ });
 </script>
 '''
 
-_PARTIAL_VUE = '''<template><div /></template>
+# Real source code that never references the login-auth entry (useLoginState).
+# Under the entry-symbol gate this FAILS for conference/login-auth: there is
+# code (so not static-only) but the slice's entry was never wired up.
+_NO_ENTRY_VUE = '''<template><div /></template>
 <script setup lang="ts">
-import { useLoginState } from "@trtc/tuikit-atomicx-vue3";
-const { login } = useLoginState();
-await login({ sdkAppId: 0, userId: "u", userSig: "x" });
+import { ref } from "vue";
+const ready = ref(false);
+ready.value = true;
+</script>
+'''
+
+_UNIT_PASSING_VUE = '''<template><div /></template>
+<script setup lang="ts">
+import { LoginEvent } from "tuikit-atomicx-vue3";
+import { useLoginState } from "tuikit-atomicx-vue3/login";
+import { useRoomState } from "tuikit-atomicx-vue3/room";
+const { login, setSelfInfo, subscribeEvent, loginUserInfo } = useLoginState();
+const { createAndJoinRoom, currentRoom, leaveRoom } = useRoomState();
+await login({ sdkAppId: 0, userId: "u", userSig: "x", scene: 5001 });
+setSelfInfo({ nickName: "Alice" });
+subscribeEvent(LoginEvent.onLoginExpired, () => {});
+subscribeEvent(LoginEvent.onKickedOffline, () => {});
+if (loginUserInfo.value?.userId) {
+  await createAndJoinRoom();
+}
+if (currentRoom.value) {
+  await leaveRoom();
+}
 </script>
 '''
 
@@ -91,7 +122,39 @@ class TestApplyHappyPath:
         ev = json.loads(ev_files[0].read_text())
         assert ev["status"] == "pass"
         assert ev["slice_id"] == "conference/login-auth"
-        assert ev["rules_checked"] >= 1
+        assert ev["entries_checked"] >= 1
+
+
+class TestApplyDeliveryUnit:
+    def test_unit_apply_checks_multiple_slices_and_advances_unit_state(
+        self, session_factory, project_factory
+    ):
+        path = session_factory(
+            execution_granularity="unit",
+            confirmed_plan=["conference/login-auth", "conference/room-lifecycle"],
+        )
+        proj = project_factory()
+        (proj / "src" / "views").mkdir(parents=True, exist_ok=True)
+        (proj / "src" / "views" / "MeetingRoom.vue").write_text(_UNIT_PASSING_VUE)
+
+        state_machine.init_queue(path)
+        state_machine.advance(path, "mark_slice_read")
+        state_machine.advance(path, "mark_code_written")
+
+        result = _run_apply_unit("foundation", path, proj)
+        assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+
+        scope = state_machine.current_scope(path)
+        assert scope["kind"] == "unit"
+        assert scope["state"] == "apply_passed"
+
+        ev = json.loads((path.parent / ".trtc-apply-evidence" / "foundation.json").read_text())
+        assert ev["kind"] == "unit"
+        assert ev["unit_id"] == "foundation"
+        assert ev["slice_ids"] == ["conference/login-auth", "conference/room-lifecycle"]
+        checked = {entry["slice_id"]: entry for entry in ev["slices_checked"]}
+        assert checked["conference/login-auth"]["entry_result"] == "pass"
+        assert checked["conference/room-lifecycle"]["entry_result"] == "pass"
 
 
 class TestApplyFailure:
@@ -101,7 +164,7 @@ class TestApplyFailure:
         path = session_factory()
         proj = project_factory()
         (proj / "src" / "views").mkdir(parents=True, exist_ok=True)
-        (proj / "src" / "views" / "MeetingRoom.vue").write_text(_PARTIAL_VUE)
+        (proj / "src" / "views" / "MeetingRoom.vue").write_text(_NO_ENTRY_VUE)
 
         _seed_to_code_written(path)
         result = _run_apply("conference/login-auth", path, proj)
@@ -115,56 +178,41 @@ class TestApplyFailure:
         assert ev["status"] == "fail"
         assert ev["issues"], "expected at least one issue listed"
         joined = json.dumps(ev["issues"], ensure_ascii=False)
-        assert "setSelfInfo" in joined or "MUST" in joined
+        assert "useLoginState" in joined or "entry" in joined
 
 
-class TestApplyDemoTest2Regressions:
-    """Regression tests for the two real bugs from demo-test-2.
+class TestApplyAntiCheatStripping:
+    """The entry-symbol check still strips comments and string literals first.
 
-    Both bugs come from the same loophole pair:
+    The original demo-test-2 bug was AI stuffing a required symbol into a
+    `// comment` or `"string"` to satisfy a literal substring grep. The
+    per-API grep is gone (the gate now only checks the slice's entry
+    symbol), but the anti-cheat property must survive for the entry symbol:
+    an entry mentioned ONLY in a comment or string is not real wiring and
+    must FAIL.
 
-      1. apply.py was checking patterns by literal substring grep.
-      2. The fail output / evidence JSON listed the literal patterns.
-
-    AI saw the patterns in fail output → AI wrote those patterns into a
-    `// comment` to satisfy the next grep. apply.py passed; the code
-    didn't actually call the API.
-
-    Fix kept after the V2 walk-back:
-      a) `_strip_comments_and_strings` runs before substring grep, so a
-         pattern hidden in `// foo`, `/* foo */`, `"foo"`, `'foo'`, or
-         `` `foo` `` is invisible to the matcher.
-      b) Fail output / evidence JSON list the rule **text** only, never
-         the literal `patterns`. AI cannot copy a string it never saw.
+    Note: a correct implementation references the entry as a real code
+    identifier (e.g. `useLoginState()`), which is never inside a string —
+    so this stripping never false-negatives on correct code.
     """
 
-    def test_pattern_in_comment_does_not_pass(
+    def test_entry_in_comment_does_not_pass(
         self, session_factory, project_factory
     ):
-        """A `.vue` whose only mention of the API is in `// comments` must FAIL.
-
-        Without `_strip_comments_and_strings`, a literal substring grep
-        would match the comment text and pass — that was the demo-test-2
-        bug. After the fix, the comment is whitespaced before grep so the
-        rule's `setSelfInfo` / `subscribeEvent` patterns are not found.
-        """
+        """A `.vue` whose only mention of the entry is in `// comments` must FAIL."""
         path = session_factory()
         proj = project_factory()
         (proj / "src" / "views").mkdir(parents=True, exist_ok=True)
 
-        # login() is called for real; the rest is comment-stuffed.
+        # useLoginState only appears in comments — no real wiring.
         comment_stuffed = '''<template><div /></template>
 <script setup lang="ts">
-import { useLoginState } from "@trtc/tuikit-atomicx-vue3";
-const { login } = useLoginState();
-await login({ sdkAppId: 0, userId: "u", userSig: "x" });
-// setSelfInfo({ nickName: "Alice" });
-// subscribeEvent(LoginEvent.onLoginExpired, () => {});
-// subscribeEvent(LoginEvent.onKickedOffline, () => {});
+import { ref } from "vue";
+// const { login } = useLoginState();
 /*
-  setSelfInfo({ nickName: "Bob" });
-  subscribeEvent(LoginEvent.onLoginExpired, () => {});
+  const { login, setSelfInfo } = useLoginState();
 */
+const ready = ref(true);
 </script>
 '''
         (proj / "src" / "views" / "MeetingRoom.vue").write_text(comment_stuffed)
@@ -172,35 +220,29 @@ await login({ sdkAppId: 0, userId: "u", userSig: "x" });
         _seed_to_code_written(path)
         result = _run_apply("conference/login-auth", path, proj)
         assert result.returncode == 1, (
-            "comment-stuffed code must fail apply — comments are stripped "
-            "before grep so the pattern can't hide there. "
+            "entry mentioned only in comments must fail apply — comments are "
+            "stripped before the entry check. "
             f"stdout={result.stdout}\nstderr={result.stderr}"
         )
 
         _, _, state = state_machine.current_slice(path)
         assert state == "apply_failed"
 
-    def test_pattern_in_string_literal_does_not_pass(
+    def test_entry_in_string_literal_does_not_pass(
         self, session_factory, project_factory
     ):
-        """A `.vue` whose only mention of the API is inside string literals must FAIL.
-
-        Same bug class as the comment case: AI could stuff the pattern
-        into `"setSelfInfo({...})"` to game substring grep. The string
-        literal stripper neutralises this too.
-        """
+        """A `.vue` whose only mention of the entry is in string literals must FAIL."""
         path = session_factory()
         proj = project_factory()
         (proj / "src" / "views").mkdir(parents=True, exist_ok=True)
 
         string_stuffed = '''<template><div /></template>
 <script setup lang="ts">
-import { useLoginState } from "@trtc/tuikit-atomicx-vue3";
-const { login } = useLoginState();
-await login({ sdkAppId: 0, userId: "u", userSig: "x" });
-const dummy = "setSelfInfo({ nickName: 'Alice' })";
-const dummy2 = 'subscribeEvent(LoginEvent.onLoginExpired, () => {})';
-const dummy3 = `subscribeEvent(LoginEvent.onKickedOffline, () => {})`;
+import { ref } from "vue";
+const dummy = "const { login } = useLoginState();";
+const dummy2 = 'useLoginState';
+const dummy3 = `useLoginState()`;
+const ready = ref(true);
 </script>
 '''
         (proj / "src" / "views" / "MeetingRoom.vue").write_text(string_stuffed)
@@ -208,27 +250,24 @@ const dummy3 = `subscribeEvent(LoginEvent.onKickedOffline, () => {})`;
         _seed_to_code_written(path)
         result = _run_apply("conference/login-auth", path, proj)
         assert result.returncode == 1, (
-            "string-literal-stuffed code must fail apply — strings are "
-            "stripped before grep. "
+            "entry mentioned only in string literals must fail apply — strings "
+            "are stripped before the entry check. "
             f"stdout={result.stdout}\nstderr={result.stderr}"
         )
 
     def test_fail_output_does_not_leak_literal_patterns(
         self, session_factory, project_factory
     ):
-        """Evidence JSON `issues[]` must not contain a `patterns` field.
+        """Evidence JSON `issues[]` must carry rule_text + type, never a `patterns` field.
 
-        Why: surfacing the parser's clean list of patterns in fail output
-        is what taught AI to comment-stuff. The contract after walk-back is
-        that issues carry rule **text** + type only, not the extracted
-        pattern list. The rule_text itself may contain inline backticks
-        (they're part of the slice's human-readable MUST line) — the lever
-        we pull is removing the *separate, clean* `patterns` array.
+        The entry-failure issue names the slice's documented entry composable
+        (safe — it's a public import, not a hidden API pattern), but it must
+        not regrow a separate clean `patterns` array.
         """
         path = session_factory()
         proj = project_factory()
         (proj / "src" / "views").mkdir(parents=True, exist_ok=True)
-        (proj / "src" / "views" / "MeetingRoom.vue").write_text(_PARTIAL_VUE)
+        (proj / "src" / "views" / "MeetingRoom.vue").write_text(_NO_ENTRY_VUE)
 
         _seed_to_code_written(path)
         result = _run_apply("conference/login-auth", path, proj)
@@ -239,11 +278,8 @@ const dummy3 = `subscribeEvent(LoginEvent.onKickedOffline, () => {})`;
         assert ev["issues"], "regression: failure should produce at least one issue"
         for issue in ev["issues"]:
             assert "patterns" not in issue, (
-                f"issue leaks 'patterns' field: {issue}. "
-                "Patterns must stay out of evidence JSON so AI can't see "
-                "a clean pattern list to comment-stuff."
+                f"issue leaks 'patterns' field: {issue}."
             )
-            # Also assert the issue has the keys we DO want.
             assert "rule_text" in issue
             assert "type" in issue
 
@@ -411,7 +447,7 @@ class TestAutoAdvanceOnFailure:
         path = session_factory()
         proj = project_factory()
         (proj / "src" / "views").mkdir(parents=True, exist_ok=True)
-        (proj / "src" / "views" / "MeetingRoom.vue").write_text(_PARTIAL_VUE)
+        (proj / "src" / "views" / "MeetingRoom.vue").write_text(_NO_ENTRY_VUE)
 
         _seed_to_code_written(path)
         _set_policy(path, "pause_on_failure")

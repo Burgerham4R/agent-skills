@@ -14,7 +14,7 @@ They exit:
 
 Out-of-scope cases that MUST exit 0:
     - session file missing
-    - slice_queue not initialised (topic flow not active)
+    - execution_queue not initialised (topic flow not active)
     - tool_name doesn't match what the gate guards
     - file_path falls outside the gate's domain
       (slice-read gate: only guards knowledge-base/slices/*.md)
@@ -69,7 +69,7 @@ class TestGateSliceRead:
         assert result.returncode == 0, result.stderr
 
     def test_allows_when_queue_not_initialised(self, session_factory):
-        """Session exists but no slice_queue → topic flow not active."""
+        """Session exists but no execution_queue -> topic flow not active."""
         path = session_factory()
         payload = {
             "tool_name": "Read",
@@ -145,6 +145,41 @@ class TestGateSliceRead:
         result = _run_gate(GATE_READ, payload, path)
         assert result.returncode == 2
 
+    def test_unit_mode_allows_any_slice_in_current_unit(self, session_factory):
+        path = session_factory(
+            execution_granularity="unit",
+            confirmed_plan=[
+                "conference/login-auth",
+                "conference/room-lifecycle",
+                "conference/room-chat",
+            ],
+        )
+        state_machine.init_queue(path)
+        payload = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "knowledge-base/slices/conference/web/room-lifecycle.md"},
+        }
+        result = _run_gate(GATE_READ, payload, path)
+        assert result.returncode == 0, result.stderr
+
+    def test_unit_mode_blocks_slice_outside_current_unit(self, session_factory):
+        path = session_factory(
+            execution_granularity="unit",
+            confirmed_plan=[
+                "conference/login-auth",
+                "conference/room-lifecycle",
+                "conference/room-chat",
+            ],
+        )
+        state_machine.init_queue(path)
+        payload = {
+            "tool_name": "Read",
+            "tool_input": {"file_path": "knowledge-base/slices/conference/web/room-chat.md"},
+        }
+        result = _run_gate(GATE_READ, payload, path)
+        assert result.returncode == 2
+        assert "current unit" in result.stderr or "foundation" in result.stderr
+
     def test_allows_absolute_path_to_current_slice(self, session_factory, tmp_path):
         """Absolute paths must also be matched, not just relative ones."""
         path = session_factory()
@@ -218,7 +253,7 @@ class TestGateSliceWrite:
         """Writing to .claude/, knowledge-base/, /tmp etc. is not the gate's domain."""
         path, _target = self._project_file(session_factory)
         state_machine.init_queue(path)
-        # current_slice_state == not_started — would block a project write,
+        # current_execution_state == not_started would block a project write,
         # but this write is OUTSIDE the project root.
         outside = tmp_path / "elsewhere" / "scratch.md"
         payload = {"tool_name": "Write", "tool_input": {"file_path": str(outside)}}

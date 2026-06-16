@@ -7,7 +7,6 @@ industry: generic
 slices:
   - conference/login-auth
   - conference/prejoin-check
-  - conference/room-config
   - conference/room-lifecycle
   - conference/participant-list
   - conference/video-layout
@@ -15,10 +14,9 @@ slices:
   - conference/network-quality
   - conference/room-chat
   - conference/screen-share
-  - conference/room-moderation
   - conference/participant-management
   - conference/room-schedule
-  - conference/room-invite
+  - conference/room-call
 ---
 
 # 研讨会 / 宣讲会 Slice 映射
@@ -62,9 +60,9 @@ slices:
 |------|----------|-----------------|------|
 | 1. 用户登录进入系统 | 建立稳定会话与身份 | `conference/login-auth` | 主讲人、主持人、嘉宾、观众都依赖统一登录态。 |
 | 2. 主讲人会前准备 | 完成设备检查、画面效果和共享准备 | `conference/prejoin-check`, `conference/device-control`, `conference/screen-share` | 主讲人通常在开讲前完成音视频和演示内容准备。 |
-| 3. 创建 / 加入 / 预约研讨会 | 建立 webinar 房间或确认排期 | `conference/room-config`, `conference/room-lifecycle`, `conference/room-schedule` | 宣讲会、培训讲座、线上发布会通常更依赖预约和定时开始。 |
+| 3. 创建 / 加入 / 预约研讨会 | 建立 webinar 房间或确认排期 | `conference/room-lifecycle`, `conference/room-schedule` | 宣讲会、培训讲座、线上发布会通常更依赖预约和定时开始。 |
 | 4. 渲染主舞台与观众侧信息 | 呈现主讲画面、共享内容、观众名单和聊天区 | `conference/video-layout`, `conference/participant-list`, `conference/room-chat` | 画面编排以主舞台优先，不应默认所有观众与主讲人平权展示。 |
-| 5. 进行受控互动 | 聊天、问答、举手、申请上台、临时邀请嘉宾 | `conference/room-chat`, `conference/room-moderation`, `conference/participant-management`, `conference/room-invite` | 研讨会的互动通常是受控开放，而不是默认全量平权。 |
+| 5. 进行受控互动 | 聊天、问答、举手、申请上台、临时呼叫嘉宾 | `conference/room-chat`, `conference/participant-management`, `conference/room-call` | 研讨会的互动通常是受控开放，而不是默认全量平权。 |
 | 6. 处理设备与网络异常 | 保证主讲链路稳定 | `conference/device-control`, `conference/network-quality`, `conference/room-lifecycle` | 主讲人的音视频和共享链路优先级通常更高。 |
 | 7. 结束研讨会或观众离场 | 统一收口状态 | `conference/room-lifecycle`, `conference/device-control` | 主持人结束和观众离场都应有清晰收口。 |
 
@@ -75,12 +73,12 @@ slices:
 | 主讲人 / 主持人 / 嘉宾 / 观众角色分层 | `conference/participant-list`, `conference/participant-management` | 研讨会高度依赖角色分层和受控授权。 |
 | 主舞台长期突出主讲人或共享内容 | `conference/video-layout`, `conference/screen-share` | `webinar` 的核心就是主舞台中心化。 |
 | 观众通过聊天区提问 | `conference/room-chat` | 聊天 / 问答通常是观众最稳定的互动入口。 |
-| 主持人控制谁能发言、共享、聊天 | `conference/room-moderation`, `conference/participant-management` | 这类房型最关键的是互动权治理。 |
-| 临时邀请嘉宾上台或补邀入会 | `conference/room-invite`, `conference/participant-management`, `conference/room-lifecycle` | 邀请、授权和真正入会是两段链路。 |
+| 主持人控制谁能发言、共享、聊天 | `conference/participant-management` | 这类房型最关键的是互动权治理。 |
+| 临时呼叫嘉宾上台或补叫入会 | `conference/room-call`, `conference/participant-management`, `conference/room-lifecycle` | 呼叫、授权和真正入会是两段链路。 |
 | 培训讲座、发布会、town hall 的预约和到点开讲 | `conference/room-schedule`, `conference/room-lifecycle` | 这类场景通常强依赖排期。 |
 | 主讲人会前预览与设备确认 | `conference/prejoin-check`, `conference/device-control` | 主讲链路必须在开讲前稳定。 |
 | 演示课件、产品发布、屏幕共享讲解 | `conference/screen-share`, `conference/video-layout` | 主讲内容通常由共享驱动主舞台。 |
-| 观众弱互动、主讲强中心 | `conference/video-layout`, `conference/room-chat`, `conference/room-moderation` | 这是 `webinar` 场景的典型命中特征。 |
+| 观众弱互动、主讲强中心 | `conference/video-layout`, `conference/room-chat`, `conference/participant-management` | 这是 `webinar` 场景的典型命中特征。 |
 
 ## 主命中分层建议
 
@@ -90,7 +88,6 @@ slices:
 
 - `conference/login-auth`
 - `conference/prejoin-check`
-- `conference/room-config`
 - `conference/room-lifecycle`
 - `conference/video-layout`
 - `conference/participant-list`
@@ -98,10 +95,9 @@ slices:
 - `conference/network-quality`
 - `conference/room-chat`
 - `conference/screen-share`
-- `conference/room-moderation`
 - `conference/participant-management`
 - `conference/room-schedule`
-- `conference/room-invite`
+- `conference/room-call`
 
 ### P1 按需补命中
 

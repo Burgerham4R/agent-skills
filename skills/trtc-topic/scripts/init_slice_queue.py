@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""init_slice_queue.py — Topic-skill CLI: materialise slice_queue from session.
+"""init_slice_queue.py — Topic-skill CLI: materialise execution_queue from session.
 
 Usage:
     python3 init_slice_queue.py                 # auto-resolves session path
@@ -14,7 +14,7 @@ Session path resolution (in order):
        the user project root)
 
 Reads ``confirmed_plan`` from the session and writes:
-    slice_queue, current_slice_index=0, current_slice_state=not_started
+    execution_queue, current_execution_index=0, current_execution_state=not_started
 
 Idempotent. Refuses to re-init if the plan has changed (queue is frozen).
 
@@ -76,10 +76,19 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     st = state_machine.status(session_path)
-    print(
-        f"queue initialised — {st['total']} slices, "
-        f"cursor at [{st['index']}] {st['current_slice_id']} ({st['state']})"
-    )
+    kind = st.get("kind", "slice")
+    cur = st.get("current_unit_id") or st.get("current_slice_id")
+    if kind == "unit":
+        print(
+            f"queue initialised — {st['total']} delivery units, "
+            f"cursor at [{st['index']}] {cur} ({st['state']}), "
+            f"slices: {', '.join(st.get('slice_ids') or [])}"
+        )
+    else:
+        print(
+            f"queue initialised — {st['total']} slices, "
+            f"cursor at [{st['index']}] {cur} ({st['state']})"
+        )
     return 0
 
 

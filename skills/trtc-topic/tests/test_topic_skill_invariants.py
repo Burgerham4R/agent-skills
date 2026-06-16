@@ -35,6 +35,7 @@ TOPIC_SKILL = ROOT / "skills" / "trtc-topic" / "SKILL.md"
 STATE_MACHINE_GUIDE = (
     ROOT / "skills" / "trtc-topic" / "scripts" / "STATE-MACHINE-GUIDE.md"
 )
+EXECUTION_UNITS = ROOT / "skills" / "trtc-topic" / "references" / "execution-units.yaml"
 
 
 def test_apply_evidence_block_remains_deleted():
@@ -70,17 +71,33 @@ def test_state_machine_guide_exists_and_is_referenced():
     )
 
 
+def test_delivery_unit_grouping_is_declarative():
+    """Automatic unit grouping must stay visible outside state_machine.py."""
+    assert EXECUTION_UNITS.exists(), "delivery-unit grouping config is missing"
+    topic_text = TOPIC_SKILL.read_text()
+    guide_text = STATE_MACHINE_GUIDE.read_text()
+    assert "references/execution-units.yaml" in topic_text
+    assert "references/execution-units.yaml" in guide_text
+
+    state_machine_text = (
+        ROOT / "skills" / "trtc-topic" / "scripts" / "lib" / "state_machine.py"
+    ).read_text()
+    assert "_DEFAULT_UNIT_GROUPS" not in state_machine_text
+    assert "会议基础链路" not in state_machine_text
+
+
 def test_topic_skill_size_reduced():
     """Sanity check: topic/SKILL.md should be substantially smaller than the
     original 512-line version. If it grows back, something has been re-inlined."""
     text = TOPIC_SKILL.read_text()
     line_count = len(text.splitlines())
-    # Original: 512 lines. After Stage 1+2+3: ~390 lines.
-    # Allow some growth (e.g. for new scenarios) but flag if it inflates back to old size.
-    assert line_count < 480, (
-        f"topic/SKILL.md is {line_count} lines — close to or above the "
-        f"pre-redesign size (512). Check if Apply Evidence Block, state machine "
-        f"manual, or Calling apply contract was re-inlined."
+    # The topic skill has grown with ui_mode, runtime verification, and
+    # delivery-unit execution. Keep a budget so the old anti-patterns don't
+    # quietly return, but do not enforce the obsolete 2026-05 compact size.
+    assert line_count < 760, (
+        f"topic/SKILL.md is {line_count} lines — above the current budget. "
+        f"Check if Apply Evidence Block, state machine manual, or Calling apply "
+        f"contract was re-inlined."
     )
 
 
@@ -88,10 +105,6 @@ def test_calling_apply_section_is_compact():
     """The 'Calling apply' section must not contain the removed full request schema.
 
     The full I/O contract lives in apply/SKILL.md Phase 0; topic just references it.
-
-    Note: Step 3.5 ui_mode=full-ui has its own apply request example (multi-slice
-    composite code), which is intentionally kept until UI implementation form is
-    finalised. We only check the GENERAL 'Calling apply' section, not Step 3.5.
     """
     text = TOPIC_SKILL.read_text()
     # Locate the "### Calling apply" section bounds.

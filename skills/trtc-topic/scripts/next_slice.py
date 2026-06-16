@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""next_slice.py — Topic-skill CLI: query and advance the slice cursor.
+"""next_slice.py — Topic-skill CLI: query and advance the execution cursor.
 
-The topic skill drives one slice at a time by calling this between steps.
+The topic skill drives one execution step at a time by calling this between
+steps. An execution step may be one slice or one delivery unit containing
+multiple slices.
 
 Usage:
     python3 next_slice.py status                    # print current cursor
@@ -13,7 +15,7 @@ Transitions (see state_machine.py for the diagram):
                           apply_failed  → code_written  (retry)
     mark_apply_passed     code_written  → apply_passed
     mark_apply_failed     code_written  → apply_failed
-    mark_user_confirmed   apply_passed  → next slice (or all_done)
+    mark_user_confirmed   apply_passed  → next execution step (or all_done)
 
 Both subcommands print a one-line summary on stdout and exit 0 on success.
 On any error (illegal transition, queue not initialised, etc.) prints to
@@ -61,9 +63,12 @@ def _print_status(session_path: Path, as_json: bool) -> int:
     if not st.get("initialised"):
         print(f"queue not initialised: {st.get('reason')}")
         return 0
-    print(
-        f"[{st['index']}/{st['total']}] {st['current_slice_id']} :: {st['state']}"
-    )
+    kind = st.get("kind", "slice")
+    cur = st.get("current_unit_id") or st.get("current_slice_id")
+    detail = ""
+    if kind == "unit":
+        detail = f" ({', '.join(st.get('slice_ids') or [])})"
+    print(f"[{st['index']}/{st['total']}] {kind}:{cur}{detail} :: {st['state']}")
     return 0
 
 
@@ -85,12 +90,16 @@ def _do_advance(session_path: Path, transition: str, as_json: bool) -> int:
             "new_state": new_state,
             "index": st["index"],
             "current_slice_id": st["current_slice_id"],
+            "current_unit_id": st.get("current_unit_id"),
+            "kind": st.get("kind", "slice"),
+            "slice_ids": st.get("slice_ids") or [],
         }
         print(jsonlib.dumps(payload, ensure_ascii=False))
     else:
-        cur = st["current_slice_id"] or "(none)"
+        cur = st.get("current_unit_id") or st["current_slice_id"] or "(none)"
         print(
-            f"{transition} OK → [{st['index']}/{st['total']}] {cur} :: {new_state}"
+            f"{transition} OK → [{st['index']}/{st['total']}] "
+            f"{st.get('kind', 'slice')}:{cur} :: {new_state}"
         )
     return 0
 

@@ -13,12 +13,10 @@ slices:
   - conference/login-auth
   - conference/prejoin-check
   - conference/room-schedule
-  - conference/room-config
   - conference/room-lifecycle
-  - conference/room-invite
+  - conference/room-call
   - conference/participant-list
   - conference/participant-management
-  - conference/room-moderation
   - conference/device-control
   - conference/network-quality
   - conference/room-chat
@@ -54,11 +52,11 @@ slices:
 |------|--------|--------------|---------|
 | 1. 主诊医生发起会诊并预约时间 | 主诊医生 / 后台 | `login-auth` + `room-schedule` + 业务会诊单 | 医生创建会诊单、选择时间并配置参与专家与患者信息 |
 | 2. 医生与专家会前准备 | 医生 / 专家 | `prejoin-check` + `device-control` | 各参会医生在入会前完成摄像头、麦克风、扬声器检查 |
-| 3. 主诊医生创建并进入会诊房间 | 主诊医生 | `room-config` + `room-lifecycle` | 由主诊医生配置并进入本次会诊房间，建立主持角色和房间规则 |
-| 4. 邀请专家和相关参与方进入 | 主诊医生 / 系统 | `room-invite` + `room-lifecycle` + `participant-list` | 按会诊单邀请院内外专家、助理，必要时控制患者 / 家属进入时机 |
+| 3. 主诊医生创建并进入会诊房间 | 主诊医生 | `room-lifecycle` | 由主诊医生配置并进入本次会诊房间，建立主持角色和房间规则 |
+| 4. 邀请专家和相关参与方进入 | 主诊医生 / 系统 | `room-call` + `room-lifecycle` + `participant-list` | 按会诊单邀请院内外专家、助理，必要时控制患者 / 家属进入时机 |
 | 5. 多人视频讨论病例 | 医生 / 专家 | `video-layout` + `participant-list` + `room-chat` + `network-quality` | 多位医生基于病例进行实时音视频讨论，查看在场状态、发言态和网络状态 |
 | 6. 共享影像和病例资料 | 医生 / 专家 | `screen-share` + `video-layout` + 业务病历面板 | 共享 CT、检查单、PPT 或病例资料，并保持主舞台与成员画面的协同展示 |
-| 7. 主诊医生控场与结论收敛 | 主诊医生 | `room-moderation` + `participant-management` + 业务会诊单 | 控制发言秩序、静音、移除或指定发言人，并沉淀会诊结论 |
+| 7. 主诊医生控场与结论收敛 | 主诊医生 | `participant-management` + 业务会诊单 | 控制发言秩序、静音、移除或指定发言人，并沉淀会诊结论 |
 | 8. 结束会诊并归档 | 主诊医生 / 后台 | `room-lifecycle` + `device-control` + 业务归档模块 | 结束会诊、释放本地设备，并把结论、建议和会诊记录归档 |
 
 ## 角色流程
@@ -69,15 +67,15 @@ slices:
 |------|--------------|---------|
 | 1. 登录医生工作台 | login-auth | 完成 `SDKAppID / UserID / UserSig` 鉴权登录 |
 | 2. 发起会诊并设置议题 | 业务会诊单 + room-schedule | 选择病例、时间、参与专家和会诊目标 |
-| 3. 创建会诊房间 | room-config + room-lifecycle | 配置房间名称、入会规则、默认禁麦或角色权限 |
-| 4. 邀请专家 / 患者 / 家属 | room-invite + participant-management | 定向邀请参会人，并根据阶段控制谁可以入会 |
-| 5. 组织讨论与总结结论 | room-moderation + room-chat + 业务会诊单 | 控制发言秩序、同步文字结论并最终收口 |
+| 3. 创建会诊房间 | room-lifecycle | 配置房间名称、入会规则、默认禁麦或角色权限 |
+| 4. 邀请专家 / 患者 / 家属 | room-call + participant-management | 定向邀请参会人，并根据阶段控制谁可以入会 |
+| 5. 组织讨论与总结结论 | participant-management + room-chat + 业务会诊单 | 控制发言秩序、同步文字结论并最终收口 |
 
 ### 阶段二：专家医生
 
 | 步骤 | Slice / 模块 | 核心操作 |
 |------|--------------|---------|
-| 1. 接收会诊通知 | room-schedule / room-invite | 从预约列表或即时邀请进入会诊 |
+| 1. 接收会诊通知 | room-schedule / room-call | 从预约列表或即时邀请进入会诊 |
 | 2. 会前设备检查 | prejoin-check + device-control | 检查设备状态并处理权限 / 占用问题 |
 | 3. 进入会诊房间 | room-lifecycle | 进入多人讨论房间，加载音视频上下文 |
 | 4. 查看参会状态与资料 | participant-list + 业务病历面板 | 识别当前发言人、角色和病例资料 |
@@ -87,7 +85,7 @@ slices:
 
 | 步骤 | Slice / 模块 | 核心操作 |
 |------|--------------|---------|
-| 1. 等待进入通知 | 业务会诊单 / room-invite | 只在需要直接沟通时接收进入提醒 |
+| 1. 等待进入通知 | 业务会诊单 / room-call | 只在需要直接沟通时接收进入提醒 |
 | 2. 完成入会前检查 | prejoin-check + device-control | 检查本地设备和网络状态 |
 | 3. 在指定阶段进入房间 | room-lifecycle + participant-list | 进入会诊房间，与医生 / 专家进行补充沟通 |
 | 4. 退出会诊并等待结果 | room-lifecycle | 沟通结束后退出房间，回到业务结果页 |
@@ -97,7 +95,7 @@ slices:
 | 能力点 | 对应 Slice / 模块 | 说明 |
 |------|------------------|------|
 | 会诊预约与时间管理 | `room-schedule` + 业务会诊单 | 预约列表与到点提醒属于高频入口 |
-| 房间规则与角色权限 | `room-config` + `room-moderation` | 会诊通常有明确主持人和受控发言秩序 |
+| 房间规则与角色权限 | `room-lifecycle` + `participant-management` | 会诊通常有明确主持人和受控发言秩序 |
 | 多专家入会与状态展示 | `participant-list` + `participant-management` | 需要清楚看到各专家身份、设备态和发言状态 |
 | 病例讨论主舞台 | `video-layout` + `screen-share` | 影像或病例资料共享时，需要兼顾主舞台和人员画面 |
 | 会中沟通与结论同步 | `room-chat` + 业务会诊单 | 聊天用于补充文字信息，正式结论仍落业务模块 |
@@ -107,9 +105,9 @@ slices:
 
 | 现象 | 可能原因 | 参考 Slice / 模块 |
 |------|---------|------------------|
-| 专家收不到会诊通知 | 邀请未送达、预约数据未同步或用户不在线 | room-invite / room-schedule |
+| 专家收不到会诊通知 | 邀请未送达、预约数据未同步或用户不在线 | room-call / room-schedule |
 | 部分医生进入后看不到其他参会人 | 角色映射错误或成员状态未正确同步 | participant-list / participant-management |
 | 共享影像后主画面切换异常 | 共享状态、布局逻辑或主舞台策略未处理好 | screen-share / video-layout |
-| 会中无法发言或被错误静音 | 会控规则配置不一致或主持操作未同步 | room-moderation |
+| 会中无法发言或被错误静音 | 会控规则配置不一致或主持操作未同步 | participant-management |
 | 外院专家音视频异常 | 本地设备权限、浏览器兼容性或网络质量问题 | prejoin-check / device-control / network-quality |
 | 会诊结束后仍占用摄像头麦克风 | 房间收口后未正确释放本地设备 | room-lifecycle / device-control |

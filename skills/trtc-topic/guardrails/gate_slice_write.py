@@ -4,7 +4,7 @@
 Wired into ``.claude/settings.json`` under ``PreToolUse`` with matcher
 ``Write|Edit``. Contract identical to gate_slice_read.py.
 
-State-based policy (only fires when slice_queue is initialised AND the
+State-based policy (only fires when execution_queue is initialised AND the
 target file lives inside the user project's source tree):
 
     not_started     → BLOCK (read the slice first)
@@ -17,7 +17,7 @@ target file lives inside the user project's source tree):
 Out-of-scope cases (silent allow):
     * tool_name not in {Write, Edit}
     * session file missing
-    * slice_queue not initialised
+    * execution_queue not initialised
     * file_path is NOT inside ``project_state.project_root`` (e.g. writing
       to .claude/, knowledge-base/, /tmp/...) — the gate only guards
       project source files.
@@ -29,13 +29,22 @@ import os
 import sys
 from pathlib import Path
 
-import yaml
+try:
+    import yaml
+except Exception:
+    yaml = None  # type: ignore[assignment]
 
 HERE = Path(__file__).resolve().parent
 STATE_MACHINE_DIR = HERE.parent / "scripts" / "lib"
 sys.path.insert(0, str(STATE_MACHINE_DIR))
-import state_machine  # noqa: E402
-sys.path.pop(0)
+try:
+    import state_machine  # noqa: E402
+except Exception:
+    # A guardrail must never crash the user's session just because its own
+    # dependency failed to import. Fail open (allow) — see main().
+    state_machine = None  # type: ignore[assignment]
+finally:
+    sys.path.pop(0)
 
 
 def _resolve_session_path() -> Path:
@@ -59,9 +68,11 @@ def _parse_payload() -> dict:
 
 
 def _project_root_from_session(session_path: Path) -> Path | None:
+    if yaml is None:
+        return None
     try:
         data = yaml.safe_load(session_path.read_text()) or {}
-    except (OSError, yaml.YAMLError):
+    except Exception:
         return None
     pr = (data.get("project_state") or {}).get("project_root")
     if not pr:
@@ -80,6 +91,10 @@ def _is_inside(path: Path, root: Path) -> bool:
 
 
 def main() -> int:
+    if state_machine is None:
+        # Dependency import failed — fail open.
+        return 0
+
     payload = _parse_payload()
     if payload.get("tool_name") not in {"Write", "Edit"}:
         return 0
@@ -92,10 +107,15 @@ def main() -> int:
     if not session_path.exists():
         return 0
 
-    idx, current_id, state = state_machine.current_slice(session_path)
-    if current_id is None and state != "all_done":
+    scope = state_machine.current_scope(session_path)
+    if not scope.get("initialised"):
         # Topic flow not active.
         return 0
+    idx = scope["index"]
+    current_id = scope["id"]
+    state = scope["state"]
+    kind = scope["kind"]
+    slice_ids = scope["slice_ids"]
 
     project_root = _project_root_from_session(session_path)
     if project_root is None:
@@ -115,18 +135,17 @@ def main() -> int:
 
     if state == "not_started":
         sys.stderr.write(
-            f"[topic gate] Write blocked: state is 'not_started' for slice "
+            f"[topic gate] Write blocked: state is 'not_started' for {kind} "
             f"[{idx}] '{current_id}'.\n"
-            f"Read the slice file first "
-            f"(knowledge-base/slices/{current_id}.md and the platform file),\n"
-            f"then run: next_slice.py advance mark_slice_read — only after that "
-            f"may you write code for this slice.\n"
+            f"Read the current {kind}'s slice files first: {', '.join(slice_ids)}.\n"
+            f"Then run: next_slice.py advance mark_slice_read — only after that "
+            f"may you write code for this {kind}.\n"
         )
         return 2
 
     if state == "apply_passed":
         sys.stderr.write(
-            f"[topic gate] Write blocked: state is 'apply_passed' for slice "
+            f"[topic gate] Write blocked: state is 'apply_passed' for {kind} "
             f"[{idx}] '{current_id}'.\n"
             f"Apply has already passed. Stop generating; ask the user to confirm,\n"
             f"then run: next_slice.py advance mark_user_confirmed before continuing.\n"
@@ -142,4 +161,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception:
+        # Last-resort guard: a hook bug must not block the user or spam a
+        # traceback. Fail open (allow the Write/Edit).
+        sys.exit(0)

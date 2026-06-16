@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""apply.py — Executable apply gate.
+"""apply.py — Executable structural gate.
 
-Replaces the AI-driven "I'll call apply skill" with a deterministic command
-the topic skill must run between writing code and asking the user to confirm.
+This is a STRUCTURAL GATE, not a correctness/compile verifier. It exists to
+stop the AI from declaring a slice "done" and ending the turn before a
+deterministic check has run — a forcing function on the state machine, paired
+with the Stop hook (``guardrails/stop_require_apply_evidence.py``). The check
+itself is intentionally minimal; it does NOT verify types, compilation, or
+runtime behavior. Correctness comes from the slice's MUST/MUST NOT constraints
+at generation time and the user running the code in their real project.
 
 Usage:
     python3 apply.py --slice conference/login-auth
+    python3 apply.py --unit foundation
                      [--session PATH]
                      [--project PATH]
 
@@ -19,26 +25,44 @@ What it does:
 
 1. Confirms the state machine is in ``code_written`` for the slice the
    caller named. Anything else is a usage error (exit 2).
-2. Loads MUST rules for the slice via ``apply_lib.rule_parser`` (extracts
-   backtick-quoted code patterns from each rule).
-3. For each rule, checks whether ANY of its patterns appears in any
-   ``.vue``/``.ts`` file under ``<project_root>/src/`` — **with comments and
-   string literals stripped first** so AI cannot stuff patterns into
-   ``// comments`` or ``"strings"`` to pass the check.
-4. Writes evidence JSON to ``<session_dir>/.trtc-apply-evidence/<slug>.json``.
-5. Advances the state machine: pass → apply_passed (exit 0); fail →
+2. Requires the project to contain real source (``code non-empty``): if
+   ``<project_root>/src/`` has no ``.vue``/``.ts`` files the run is
+   static-only and fails — there is nothing to gate.
+3. For each slice, checks that the slice's **entry symbol** (its composable /
+   component, e.g. ``useDeviceState`` for device-control) appears as a real
+   code identifier in some source file — **with comments and string literals
+   stripped first** so the entry can't be faked from a ``// comment`` or
+   ``"string"``. Slices with no registered entry symbol are skipped (we can't
+   check them mechanically; never a false-positive). This is a coarse
+   "did you wire up this capability's entry" check, deliberately NOT a proof
+   of correctness.
+4. Runs a NARROW compile-safety check for composable-destructuring name
+   collisions (e.g. the same symbol destructured from two ``use*()`` calls,
+   or destructured and then re-declared as a function). It is NOT a general
+   linter.
+5. Writes evidence JSON to ``<session_dir>/.trtc-apply-evidence/<slug>.json``.
+6. Advances the state machine: pass → apply_passed (exit 0); fail →
    apply_failed (exit 1).
 
 Exit codes: 0 pass / 1 fail / 2 usage error
 
-Why minimal: the prior V2 yaml-driven engine was walked back because the
-verify-yaml maintenance burden did not match the actual bug surface
-(see docs/apply-skill-long-term-design.md). Two real bugs from
-demo-test-2 are kept fixed here:
+Why an entry-symbol check and not a per-API grep: an earlier version greped
+each MUST rule's backtick-quoted patterns. That was unreliable in both
+directions — any-pattern-hit produced false positives, and stripping string
+literals (needed for anti-cheat) produced false negatives whenever a symbol
+legitimately lived inside a string (e.g. an error-code constant). The gate's
+real value is the forcing function (you cannot self-certify and stop), not the
+judge's precision, so the judge was reduced to the honest minimum: code exists
++ the slice's entry was wired up. Correctness is delegated to the slice's
+MUST/MUST NOT constraints and the customer's own build.
 
-  * Comment / string-literal stuffing — patterns must be in real code
-  * AI shouldn't see literal patterns in fail messages — fail output
-    describes the rule semantically, never names the missing pattern
+Why not a compiler: apply runs inside the customer's heterogeneous existing
+project, where a build can fail for reasons unrelated to generated code
+(missing deps, private registries, monorepo config) and is slow per slice —
+so compilation is intentionally out of scope. The comment/string stripping is
+kept because the demo-test-2 bug showed symbols can be stuffed into comments
+or strings; entry symbols are code identifiers so this never false-negatives
+on correct code.
 """
 from __future__ import annotations
 
@@ -48,7 +72,6 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Iterable
 
 import yaml
 
@@ -63,7 +86,7 @@ sys.path.pop(0)
 # HERE = skills/trtc-topic/scripts → parent.parent = skills/
 _APPLY_GUARDRAILS = HERE.parent.parent / "trtc-apply" / "guardrails"
 sys.path.insert(0, str(_APPLY_GUARDRAILS))
-from apply_lib.rule_parser import extract_rules_from_slice  # noqa: E402
+from apply_lib.rule_parser import entry_symbols_for_slice  # noqa: E402
 sys.path.pop(0)
 
 
@@ -91,23 +114,6 @@ def _slice_id_to_slug(slice_id: str) -> str:
 
 def _load_session(session_path: Path) -> dict:
     return yaml.safe_load(session_path.read_text()) or {}
-
-
-def _slice_files(repo_root: Path, slice_id: str, platform: str) -> list[Path]:
-    """Return product overview + platform file for the slice (existing files only)."""
-    product, ability = slice_id.split("/", 1)
-    candidates = [
-        repo_root / "knowledge-base" / "slices" / product / f"{ability}.md",
-        repo_root / "knowledge-base" / "slices" / product / platform / f"{ability}.md",
-    ]
-    return [p for p in candidates if p.exists()]
-
-
-def _gather_must_rules(slice_files: Iterable[Path]) -> list[dict]:
-    rules: list[dict] = []
-    for sf in slice_files:
-        rules.extend(extract_rules_from_slice(sf))
-    return [r for r in rules if r.get("type") == "MUST"]
 
 
 def _strip_comments_and_strings(content: str) -> str:
@@ -217,41 +223,152 @@ def _scan_project_src(project_root: Path) -> tuple[str, list[tuple[Path, str]]]:
     return ("full" if files else "static-only", files)
 
 
-def _check_rule(rule: dict, files: list[tuple[Path, str]]) -> bool:
-    """A MUST rule passes if any pattern from it appears in any file's
-    real-code text (comments and string literals already stripped).
+_IDENT = r"[A-Za-z_$][\w$]*"
+# `const|let|var X =` / `function X` / `async function X` / `class X`
+_SIMPLE_DECL_RE = re.compile(
+    r"\b(?:const|let|var)\s+(" + _IDENT + r")\s*[=:]"
+    r"|\b(?:async\s+)?function\s*\*?\s*(" + _IDENT + r")"
+    r"|\bclass\s+(" + _IDENT + r")"
+)
+# `const { a, b: c } = useXxx(...)` — destructuring whose RHS is a call.
+_DESTRUCTURE_RE = re.compile(
+    r"\b(?:const|let|var)\s*\{([^{}]*)\}\s*=\s*([^\n;]*)"
+)
 
-    Returns True (pass) / False (fail). We deliberately do NOT return the
-    list of matched patterns — exposing pattern strings in fail output is
-    what let AI learn to comment-stuff in demo-test-2.
+
+def _destructured_binding_names(brace_body: str) -> list[str]:
+    """Extract the locally-bound identifiers from a `{ ... }` destructure body.
+
+    Handles ``a``, ``a: b`` (binds ``b``), ``a = default``, ``...rest``.
+    Skips nested destructuring parts (containing ``{``) — rare for composable
+    destructuring and not worth mis-parsing.
     """
-    patterns = [p for p in rule.get("patterns", []) if isinstance(p, str) and len(p) >= 4]
-    if not patterns:
-        # Rule had no extractable code patterns — we can't check it
-        # mechanically. Treat as pass (don't false-positive on text-only rules).
-        return True
-    for _, content in files:
-        for pat in patterns:
-            if pat in content:
-                return True
-    return False
+    names: list[str] = []
+    for part in brace_body.split(","):
+        part = part.strip()
+        if not part or "{" in part:
+            continue
+        if part.startswith("..."):
+            part = part[3:].strip()
+        if ":" in part:  # rename: key:binding
+            part = part.split(":", 1)[1]
+        part = part.split("=", 1)[0].strip()  # drop default value
+        if re.fullmatch(_IDENT, part):
+            names.append(part)
+    return names
+
+
+def _check_duplicate_declarations(
+    files: list[tuple[Path, str]], project_root: Path
+) -> list[dict]:
+    """Detect composable-destructuring name collisions that will not compile.
+
+    This is a deliberately NARROW, high-precision check — NOT a general
+    redeclaration linter. It only flags the failure mode that apply's own
+    MUST-symbol grep can induce: the AI adds a destructured symbol (or a
+    wrapper function) to satisfy the grep, colliding with a name that was
+    already destructured from another composable. Two real demo bugs:
+
+      * ``const { getCameraList } = useDeviceState()`` + a later
+        ``function getCameraList()`` in the same file.
+      * ``const { subscribeEvent } = useRoomParticipantState()`` +
+        ``const { subscribeEvent } = useRoomState()`` in the same file.
+
+    We flag a name only when it is bound by destructuring at least twice, OR
+    bound by destructuring AND also declared as a simple const/function/class.
+    Pure simple-vs-simple duplicates are NOT flagged (those may be legal
+    locals in different scopes — we can't tell without a real parser).
+    """
+    issues: list[dict] = []
+    for path, content in files:
+        destructured: list[str] = []
+        for m in _DESTRUCTURE_RE.finditer(content):
+            brace_body, rhs = m.group(1), m.group(2)
+            if "(" not in rhs:  # only RHS that is a call (composable / hook)
+                continue
+            destructured.extend(_destructured_binding_names(brace_body))
+        simple: list[str] = []
+        for m in _SIMPLE_DECL_RE.finditer(content):
+            name = m.group(1) or m.group(2) or m.group(3)
+            if name:
+                simple.append(name)
+        try:
+            rel = str(path.resolve().relative_to(project_root.resolve()))
+        except (ValueError, OSError):
+            rel = str(path)
+        for name in sorted(set(destructured)):
+            d = destructured.count(name)
+            s = simple.count(name)
+            if d >= 2 or (d >= 1 and s >= 1):
+                issues.append(
+                    {
+                        "category": "duplicate-declaration",
+                        "type": "critical",
+                        "symbol": name,
+                        "file": rel,
+                        "rule_text": (
+                            f"Duplicate declaration of '{name}' in {rel}: it is "
+                            f"destructured from a composable and re-declared "
+                            f"({d}x destructure, {s}x const/function) in the same "
+                            f"file. This will not compile — alias one of them."
+                        ),
+                        "slice_id": None,
+                    }
+                )
+    return issues
+
+
+def _check_slice_entry(
+    slice_id: str, files: list[tuple[Path, str]]
+) -> tuple[str, list[str]]:
+    """Check that a slice's entry symbol appears as real code.
+
+    Returns ``(result, entry_symbols)`` where ``result`` is one of:
+
+      * ``"pass"``    — at least one entry symbol appears as an identifier in
+                        some file's real-code text (comments/strings stripped).
+      * ``"fail"``    — entry symbols are known but none appear.
+      * ``"skipped"`` — the slice has no registered entry symbol; it cannot be
+                        checked mechanically and is treated as pass (we never
+                        false-positive on slices we don't know how to check).
+
+    Entry symbols are stable code identifiers (composables / components), never
+    string literals, so unlike the old MUST-symbol grep this is immune to the
+    comment/string-stripping false-negative — yet the stripping is still run so
+    an entry mentioned only in a ``// comment`` or ``"string"`` does not count.
+    """
+    entry_symbols = entry_symbols_for_slice(slice_id)
+    if not entry_symbols:
+        return "skipped", entry_symbols
+    for sym in entry_symbols:
+        word_re = re.compile(r"\b" + re.escape(sym) + r"\b")
+        for _, content in files:
+            if word_re.search(content):
+                return "pass", entry_symbols
+    return "fail", entry_symbols
 
 
 def _write_evidence(
     session_path: Path,
-    slice_id: str,
+    evidence_id: str,
     payload: dict,
 ) -> Path:
     ev_dir = session_path.parent / ".trtc-apply-evidence"
     ev_dir.mkdir(parents=True, exist_ok=True)
-    out = ev_dir / f"{_slice_id_to_slug(slice_id)}.json"
+    out = ev_dir / f"{_slice_id_to_slug(evidence_id)}.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
     return out
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--slice", dest="slice_id", required=True)
+    p.add_argument("--slice", dest="slice_id", default=None)
+    p.add_argument(
+        "--unit",
+        dest="unit_id",
+        default=None,
+        help="current delivery unit id",
+    )
     p.add_argument(
         "--session",
         type=Path,
@@ -260,6 +377,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--project", type=Path, default=None)
     args = p.parse_args(argv)
+
+    if not args.slice_id and not args.unit_id:
+        _eprint("error: provide --slice <slice_id> or --unit <unit_id>.")
+        return 2
 
     session_path = args.session if args.session is not None else _resolve_session_path()
 
@@ -272,16 +393,36 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     # State machine gate.
-    idx, current_id, state = state_machine.current_slice(session_path)
-    if current_id is None:
-        _eprint("error: slice_queue not initialised; run init_slice_queue.py first.")
+    scope = state_machine.current_scope(session_path)
+    if not scope.get("initialised"):
+        _eprint("error: queue not initialised; run init_slice_queue.py first.")
         return 2
+    idx = scope["index"]
+    current_id = scope["id"]
+    state = scope["state"]
+    slice_ids = scope["slice_ids"]
+    kind = scope["kind"]
     if args.slice_id != current_id:
-        _eprint(
-            f"error: --slice '{args.slice_id}' does not match current slice "
-            f"[{idx}] '{current_id}'."
-        )
-        return 2
+        if kind == "unit":
+            if args.unit_id:
+                if args.unit_id != current_id:
+                    _eprint(
+                        f"error: --unit '{args.unit_id}' does not match current unit "
+                        f"[{idx}] '{current_id}'."
+                    )
+                    return 2
+            elif args.slice_id not in slice_ids:
+                _eprint(
+                    f"error: --slice '{args.slice_id}' is not part of current unit "
+                    f"[{idx}] '{current_id}' ({', '.join(slice_ids)})."
+                )
+                return 2
+        else:
+            _eprint(
+                f"error: --slice '{args.slice_id}' does not match current slice "
+                f"[{idx}] '{current_id}'."
+            )
+            return 2
     if state != "code_written":
         _eprint(
             f"error: state must be 'code_written' to run apply; current state is '{state}'.\n"
@@ -289,10 +430,6 @@ def main(argv: list[str] | None = None) -> int:
             f"`next_slice.py advance mark_code_written` before calling apply.py."
         )
         return 2
-
-    # Resolve repo root for slice file lookup. We use the worktree containing
-    # this script as the source of slice files (knowledge-base lives there).
-    repo_root = HERE.parents[3]
 
     # Resolve project root.
     session_data = _load_session(session_path)
@@ -305,45 +442,75 @@ def main(argv: list[str] | None = None) -> int:
         _eprint("error: project root not provided and not in session.")
         return 2
 
-    platform = session_data.get("platform", "web")
-
-    files_to_load = _slice_files(repo_root, args.slice_id, platform)
-    if not files_to_load:
-        _eprint(
-            f"warning: no slice file found for {args.slice_id} on platform "
-            f"{platform}; rule check will be empty."
-        )
-
-    must_rules = _gather_must_rules(files_to_load)
     mode, project_files = _scan_project_src(project_root)
 
     issues: list[dict] = []
-    rules_checked = 0
-    for rule in must_rules:
-        rules_checked += 1
-        if not _check_rule(rule, project_files):
-            # Note: we record the rule's human-readable text only.
-            # We do NOT include `patterns` — surfacing literal patterns in
-            # the evidence JSON / fail output is what let AI learn to
-            # comment-stuff. The rule_text is enough for AI to find the
-            # offending behaviour by re-reading the slice file.
-            issues.append({
-                "rule_text": rule.get("text", "")[:200],
-                "type": rule.get("type"),
-                "slice_id": rule.get("slice_id", args.slice_id),
-            })
+    per_slice: dict[str, dict] = {}
+    entries_checked = 0
+    for slice_id in slice_ids:
+        result, entry_symbols = _check_slice_entry(slice_id, project_files)
+        rec = {
+            "slice_id": slice_id,
+            "entry_checked": result != "skipped",
+            "entry_result": result,
+            "issues": [],
+        }
+        per_slice[slice_id] = rec
+        if result == "skipped":
+            continue
+        entries_checked += 1
+        if result == "fail":
+            # Naming the entry composable is safe and helpful: it is the
+            # slice's documented import (see its "代码生成约束 → 额外导入"
+            # section), not a hidden API pattern an LLM could comment-stuff.
+            issue = {
+                "rule_text": (
+                    f"slice '{slice_id}': entry not wired up — none of its "
+                    f"entry symbols ({', '.join(entry_symbols)}) appear in the "
+                    f"generated code. Import and use the slice's documented "
+                    f"entry (see its '额外导入' section)."
+                )[:200],
+                "type": "entry",
+                "slice_id": slice_id,
+            }
+            issues.append(issue)
+            rec["issues"].append(issue)
+
+    # Narrow compile-safety check: composable-destructuring name collisions.
+    # These are real compile errors, so they fail the gate. It is NOT a
+    # general redeclaration linter.
+    dup_issues = _check_duplicate_declarations(project_files, project_root)
+    for dup in dup_issues:
+        dup["slice_id"] = current_id
+        issues.append(dup)
+        per_slice.setdefault(
+            current_id,
+            {
+                "slice_id": current_id,
+                "entry_checked": False,
+                "entry_result": "skipped",
+                "issues": [],
+            },
+        )
+        per_slice[current_id]["issues"].append(dup)
 
     status = "fail" if issues or mode == "static-only" else "pass"
+    evidence_id = current_id if kind == "unit" else slice_ids[0]
     payload = {
-        "slice_id": args.slice_id,
+        "id": evidence_id,
+        "kind": kind,
+        "slice_id": slice_ids[0] if len(slice_ids) == 1 else None,
+        "unit_id": current_id if kind == "unit" else None,
+        "slice_ids": slice_ids,
         "status": status,
         "mode": mode,
-        "rules_checked": rules_checked,
+        "entries_checked": entries_checked,
         "issues": issues,
+        "slices_checked": list(per_slice.values()),
         "project_root": str(project_root),
         "files_scanned": len(project_files),
     }
-    _write_evidence(session_path, args.slice_id, payload)
+    _write_evidence(session_path, evidence_id, payload)
 
     transition = "mark_apply_passed" if status == "pass" else "mark_apply_failed"
     try:
@@ -365,8 +532,9 @@ def main(argv: list[str] | None = None) -> int:
                 _eprint(f"error: failed to auto-advance state machine: {exc}")
                 return 2
             print(
-                f"apply pass: {rules_checked} MUST rules satisfied for "
-                f"{args.slice_id} — auto-advanced ({policy}); next state: {new_state}"
+                f"apply pass: {entries_checked} slice entr"
+                f"{'y' if entries_checked == 1 else 'ies'} wired up for "
+                f"{evidence_id} — auto-advanced ({policy}); next state: {new_state}"
             )
             # POST-LOOP CHECKLIST: when all slices are done, remind the AI
             # to execute Step 4 and Step 4.5 from topic/SKILL.md.
@@ -386,16 +554,26 @@ def main(argv: list[str] | None = None) -> int:
                 print("Step 4 and Step 4.5 sections and execute them now.")
                 print("=" * 60)
             return 0
-        print(f"apply pass: {rules_checked} MUST rules satisfied for {args.slice_id}")
+        print(
+            f"apply pass: {entries_checked} slice entr"
+            f"{'y' if entries_checked == 1 else 'ies'} wired up for {evidence_id}"
+        )
         return 0
 
-    print(
-        f"apply fail: {len(issues)} of {rules_checked} MUST rules failed for "
-        f"{args.slice_id} (mode={mode})"
-    )
-    # Print the rule text only — never the literal patterns.
+    entry_failed = [i for i in issues if i.get("category") != "duplicate-declaration"]
+    dup_failed = [i for i in issues if i.get("category") == "duplicate-declaration"]
+    parts = []
+    if entry_failed:
+        parts.append(f"{len(entry_failed)} slice entr"
+                     f"{'y' if len(entry_failed) == 1 else 'ies'} not wired up")
+    if dup_failed:
+        parts.append(f"{len(dup_failed)} duplicate-declaration issue(s)")
+    if mode == "static-only" and not parts:
+        parts.append("no source files found under src/")
+    summary = ", ".join(parts) if parts else "gate failed"
+    print(f"apply fail: {summary} for {evidence_id} (mode={mode})")
     for issue in issues[:5]:
-        print(f"  - {issue['rule_text'][:120]}")
+        print(f"  - {issue.get('rule_text', '')[:160]}")
     return 1
 
 

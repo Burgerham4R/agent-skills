@@ -13,10 +13,10 @@ Out-of-scope cases (silent allow):
     * file_path doesn't look like a slice file
       (under ``knowledge-base/slices/.../*.md``)
     * session file is missing
-    * slice_queue not initialised (topic flow not active)
+    * execution_queue not initialised (topic flow not active)
 
 In-scope: file_path matches ``knowledge-base/slices/{product}/[{platform}/]{slice}.md``.
-We block unless ``{product}/{slice}`` matches the cursor's current slice id.
+We block unless ``{product}/{slice}`` belongs to the cursor's current execution step.
 """
 from __future__ import annotations
 
@@ -29,8 +29,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 STATE_MACHINE_DIR = HERE.parent / "scripts" / "lib"
 sys.path.insert(0, str(STATE_MACHINE_DIR))
-import state_machine  # noqa: E402
-sys.path.pop(0)
+try:
+    import state_machine  # noqa: E402
+except Exception:
+    # A guardrail must never crash the user's session just because its own
+    # dependency failed to import. Fail open (allow) — see main().
+    state_machine = None  # type: ignore[assignment]
+finally:
+    sys.path.pop(0)
 
 
 # Match "knowledge-base/slices/{product}/{ability}.md" or
@@ -73,6 +79,10 @@ def _slice_id_from_path(file_path: str) -> str | None:
 
 
 def main() -> int:
+    if state_machine is None:
+        # Dependency import failed — fail open.
+        return 0
+
     payload = _parse_payload()
     if payload.get("tool_name") != "Read":
         return 0
@@ -87,26 +97,37 @@ def main() -> int:
     if not session_path.exists():
         return 0
 
-    idx, current_id, state = state_machine.current_slice(session_path)
-    if current_id is None and state != "all_done":
+    scope = state_machine.current_scope(session_path)
+    if not scope.get("initialised"):
         # Topic flow not active.
         return 0
+    idx = scope["index"]
+    current_id = scope["id"]
+    state = scope["state"]
+    slice_ids = scope["slice_ids"]
+    kind = scope["kind"]
 
     if state == "all_done":
         # Topic finished; user owns the code now. Don't gate further reads.
         return 0
 
-    if requested_slice == current_id:
+    if requested_slice in slice_ids:
         return 0
 
     sys.stderr.write(
-        f"[topic gate] Read blocked: '{requested_slice}' is not the current slice.\n"
-        f"Current slice is [{idx}] '{current_id}' (state: {state}).\n"
+        f"[topic gate] Read blocked: '{requested_slice}' is not in the current {kind}.\n"
+        f"Current {kind} is [{idx}] '{current_id}' (state: {state}) with slices: "
+        f"{', '.join(slice_ids)}.\n"
         f"Finish it first — generate code, run apply, and get user confirmation —\n"
-        f"before reading any other slice from the queue.\n"
+        f"before reading any slice outside the current execution unit.\n"
     )
     return 2
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception:
+        # Last-resort guard: a hook bug must not block the user or spam a
+        # traceback. Fail open (allow the Read).
+        sys.exit(0)

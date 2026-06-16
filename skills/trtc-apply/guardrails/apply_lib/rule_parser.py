@@ -1,7 +1,16 @@
-"""rule_parser.py — Extract MUST/MUST NOT rules from slice markdown files.
+"""rule_parser.py — Slice rule extraction + entry-symbol map.
 
-Used by verify_apply_preflight.py (per-file) and verify_apply_compile.py (project-wide).
-Parses the "代码生成约束 / 生成规则" sections of slice .md files for structured rules.
+Two responsibilities:
+
+  * ``extract_rules_from_slice`` / ``rules_for_file`` — parse the
+    "代码生成约束 / 生成规则" sections of slice .md files into structured
+    MUST/MUST NOT rules (still used for documentation/inspection).
+  * ``COMPOSABLE_TO_SLICE`` / ``entry_symbols_for_slice`` — the slice ↔ entry
+    symbol map. The structural gate (``skills/trtc-topic/scripts/apply.py``)
+    uses this to check that a slice's entry composable/component is wired up
+    in the generated code. (The gate no longer greps each rule's backtick
+    patterns — that produced false negatives on symbols living inside string
+    literals; see apply.py's module docstring.)
 
 Each rule has:
   - type: "MUST" or "MUST NOT"
@@ -34,6 +43,45 @@ _BACKTICK_RE = re.compile(r'`([^`]+)`')
 
 # Match "**Verify**:" lines
 _VERIFY_RE = re.compile(r'\*\*Verify\*\*:\s*(.+?)$', re.MULTILINE)
+
+
+# Entry composable / component / value → slice_id.
+#
+# This is the single source for "what is this slice's entry symbol". It is
+# consumed in two places:
+#   * rules_for_file() — to decide which slice's rules apply to a file.
+#   * the apply gate (apply.py) — to check that a slice's entry symbol
+#     actually appears in the generated code.
+#
+# Entry symbols are stable code identifiers (composables / components / exported
+# values), never string literals — which is what makes the entry-presence check
+# immune to the comment/string-literal stripping false-negative that the old
+# MUST-symbol grep suffered from.
+COMPOSABLE_TO_SLICE = {
+    'useLoginState': 'conference/login-auth',
+    'useRoomState': 'conference/room-lifecycle',
+    'useDeviceState': 'conference/device-control',
+    'useRoomParticipantState': 'conference/participant-list',
+    'RoomView': 'conference/video-layout',
+    'RoomLayoutTemplate': 'conference/video-layout',
+    'networkInfo': 'conference/network-quality',
+    'NetworkQuality': 'conference/network-quality',
+    'useConversationListState': 'conference/room-chat',
+    'useMessageListState': 'conference/room-chat',
+    'useMessageInputState': 'conference/room-chat',
+    'setActiveConversation': 'conference/room-chat',
+    'startScreenShare': 'conference/screen-share',
+    'stopScreenShare': 'conference/screen-share',
+}
+
+
+def entry_symbols_for_slice(slice_id: str) -> list:
+    """Return the known entry symbols for a slice (inverse of COMPOSABLE_TO_SLICE).
+
+    Empty list means the slice has no registered entry symbol; callers should
+    treat that as "cannot check mechanically" rather than a failure.
+    """
+    return [sym for sym, sid in COMPOSABLE_TO_SLICE.items() if sid == slice_id]
 
 
 def extract_rules_from_slice(md_path: Path) -> list:
@@ -206,27 +254,9 @@ def rules_for_file(all_rules: list, file_content: str) -> list:
         sid = rule.get('slice_id', '')
         by_slice.setdefault(sid, []).append(rule)
 
-    # Known composable → slice_id mapping
-    composable_to_slice = {
-        'useLoginState': 'conference/login-auth',
-        'useRoomState': 'conference/room-lifecycle',
-        'useDeviceState': 'conference/device-control',
-        'useRoomParticipantState': 'conference/participant-list',
-        'RoomView': 'conference/video-layout',
-        'RoomLayoutTemplate': 'conference/video-layout',
-        'networkInfo': 'conference/network-quality',
-        'NetworkQuality': 'conference/network-quality',
-        'useConversationListState': 'conference/room-chat',
-        'useMessageListState': 'conference/room-chat',
-        'useMessageInputState': 'conference/room-chat',
-        'setActiveConversation': 'conference/room-chat',
-        'startScreenShare': 'conference/screen-share',
-        'stopScreenShare': 'conference/screen-share',
-    }
-
     # Determine which slices this file touches
     active_slices = set()
-    for composable, slice_id in composable_to_slice.items():
+    for composable, slice_id in COMPOSABLE_TO_SLICE.items():
         if composable in file_content:
             active_slices.add(slice_id)
 

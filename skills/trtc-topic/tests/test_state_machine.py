@@ -3,9 +3,9 @@
 Contract:
     init_queue(session_path) -> None
         Reads `confirmed_plan` from session, writes:
-            slice_queue: [{id, status: pending}, ...]
-            current_slice_index: 0
-            current_slice_state: not_started
+            execution_queue: [{id, type, slices, status}, ...]
+            current_execution_index: 0
+            current_execution_state: not_started
         Raises RuntimeError if confirmed_plan missing/empty.
         Idempotent: repeat calls with same plan are no-ops; calls with a
         different plan raise RuntimeError (the queue is frozen once set).
@@ -50,16 +50,16 @@ class TestInitQueue:
         path = session_factory()
         state_machine.init_queue(path)
         data = yaml.safe_load(path.read_text())
-        assert data["slice_queue"] == [
-            {"id": "conference/login-auth", "status": "pending"},
-            {"id": "conference/room-lifecycle", "status": "pending"},
-            {"id": "conference/participant-list", "status": "pending"},
-            {"id": "conference/video-layout", "status": "pending"},
-            {"id": "conference/device-control", "status": "pending"},
-            {"id": "conference/network-quality", "status": "pending"},
+        assert data["execution_queue"] == [
+            {"id": "conference/login-auth", "type": "slice", "title": "conference/login-auth", "status": "pending", "slices": ["conference/login-auth"]},
+            {"id": "conference/room-lifecycle", "type": "slice", "title": "conference/room-lifecycle", "status": "pending", "slices": ["conference/room-lifecycle"]},
+            {"id": "conference/participant-list", "type": "slice", "title": "conference/participant-list", "status": "pending", "slices": ["conference/participant-list"]},
+            {"id": "conference/video-layout", "type": "slice", "title": "conference/video-layout", "status": "pending", "slices": ["conference/video-layout"]},
+            {"id": "conference/device-control", "type": "slice", "title": "conference/device-control", "status": "pending", "slices": ["conference/device-control"]},
+            {"id": "conference/network-quality", "type": "slice", "title": "conference/network-quality", "status": "pending", "slices": ["conference/network-quality"]},
         ]
-        assert data["current_slice_index"] == 0
-        assert data["current_slice_state"] == "not_started"
+        assert data["current_execution_index"] == 0
+        assert data["current_execution_state"] == "not_started"
 
     def test_raises_when_confirmed_plan_missing(self, session_factory):
         path = session_factory(confirmed_plan=None)
@@ -80,8 +80,8 @@ class TestInitQueue:
         # the same plan is already installed.
         state_machine.init_queue(path)
         data = yaml.safe_load(path.read_text())
-        assert data["current_slice_state"] == "slice_read"
-        assert data["current_slice_index"] == 0
+        assert data["current_execution_state"] == "slice_read"
+        assert data["current_execution_index"] == 0
 
     def test_raises_when_replan_differs(self, session_factory):
         path = session_factory()
@@ -92,6 +92,78 @@ class TestInitQueue:
         path.write_text(yaml.safe_dump(data, sort_keys=False))
         with pytest.raises(RuntimeError, match="frozen|differs"):
             state_machine.init_queue(path)
+
+
+class TestInitDeliveryUnitQueue:
+    def test_unit_mode_groups_confirmed_plan_without_adding_slices(self, session_factory):
+        path = session_factory(
+            execution_granularity="unit",
+            confirmed_plan=[
+                "conference/login-auth",
+                "conference/room-lifecycle",
+                "conference/video-layout",
+                "conference/device-control",
+                "conference/room-chat",
+            ],
+        )
+        state_machine.init_queue(path)
+        data = yaml.safe_load(path.read_text())
+
+        assert [step["slices"] for step in data["execution_queue"]] == [
+            ["conference/login-auth", "conference/room-lifecycle"],
+            ["conference/video-layout"],
+            ["conference/device-control"],
+            ["conference/room-chat"],
+        ]
+        flattened = [
+            sid
+            for step in data["execution_queue"]
+            for sid in step["slices"]
+        ]
+        assert flattened == data["confirmed_plan"]
+        assert data["current_execution_index"] == 0
+        assert data["current_execution_state"] == "not_started"
+
+    def test_unit_mode_respects_declared_units_and_fills_missing_singletons(self, session_factory):
+        path = session_factory(
+            execution_granularity="unit",
+            confirmed_plan=[
+                "conference/login-auth",
+                "conference/room-lifecycle",
+                "conference/screen-share",
+            ],
+            delivery_units=[
+                {
+                    "id": "foundation",
+                    "title": "基础链路",
+                    "slices": ["conference/login-auth", "conference/room-lifecycle"],
+                }
+            ],
+        )
+        state_machine.init_queue(path)
+        data = yaml.safe_load(path.read_text())
+        assert [step["id"] for step in data["execution_queue"]] == [
+            "foundation",
+            "conference/screen-share",
+        ]
+        assert data["execution_queue"][1]["slices"] == ["conference/screen-share"]
+
+    def test_unit_mode_without_scenario_config_uses_singletons(self, session_factory):
+        path = session_factory(
+            scenario="custom-scenario-without-unit-config",
+            execution_granularity="unit",
+            confirmed_plan=[
+                "conference/login-auth",
+                "conference/room-lifecycle",
+            ],
+        )
+        state_machine.init_queue(path)
+        data = yaml.safe_load(path.read_text())
+        assert [step["type"] for step in data["execution_queue"]] == ["slice", "slice"]
+        assert [step["slices"] for step in data["execution_queue"]] == [
+            ["conference/login-auth"],
+            ["conference/room-lifecycle"],
+        ]
 
 
 # ---------- current_slice ----------
@@ -113,6 +185,20 @@ class TestCurrentSlice:
     def test_returns_none_when_session_missing(self, tmp_path):
         path = tmp_path / "missing.yaml"
         assert state_machine.current_slice(path) == (None, None, None)
+
+    def test_current_scope_reports_unit_slice_ids(self, session_factory):
+        path = session_factory(
+            execution_granularity="unit",
+            confirmed_plan=["conference/login-auth", "conference/room-lifecycle"],
+        )
+        state_machine.init_queue(path)
+        scope = state_machine.current_scope(path)
+        assert scope["kind"] == "unit"
+        assert scope["id"] == "foundation"
+        assert scope["slice_ids"] == [
+            "conference/login-auth",
+            "conference/room-lifecycle",
+        ]
 
 
 # ---------- advance ----------
@@ -152,7 +238,7 @@ class TestAdvanceHappyPath:
         assert state_machine.advance(path, "mark_user_confirmed") == "all_done"
 
     def test_marks_completed_slices_in_queue(self, session_factory):
-        """slice_queue[i].status flips pending → done as we confirm each."""
+        """execution_queue[i].status flips pending → done as we confirm each."""
         path = session_factory()
         state_machine.init_queue(path)
         state_machine.advance(path, "mark_slice_read")
@@ -160,8 +246,27 @@ class TestAdvanceHappyPath:
         state_machine.advance(path, "mark_apply_passed")
         state_machine.advance(path, "mark_user_confirmed")
         data = yaml.safe_load(path.read_text())
-        assert data["slice_queue"][0]["status"] == "done"
-        assert data["slice_queue"][1]["status"] == "pending"
+        assert data["execution_queue"][0]["status"] == "done"
+        assert data["execution_queue"][1]["status"] == "pending"
+
+    def test_unit_cycle_marks_all_slices_in_unit_done(self, session_factory):
+        path = session_factory(
+            execution_granularity="unit",
+            confirmed_plan=[
+                "conference/login-auth",
+                "conference/room-lifecycle",
+                "conference/room-chat",
+            ],
+        )
+        state_machine.init_queue(path)
+        state_machine.advance(path, "mark_slice_read")
+        state_machine.advance(path, "mark_code_written")
+        state_machine.advance(path, "mark_apply_passed")
+        assert state_machine.advance(path, "mark_user_confirmed") == "not_started"
+
+        data = yaml.safe_load(path.read_text())
+        assert data["execution_queue"][0]["status"] == "done"
+        assert data["execution_queue"][1]["status"] == "pending"
 
 
 class TestAdvanceIllegalTransitions:

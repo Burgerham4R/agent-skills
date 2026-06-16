@@ -12,11 +12,9 @@ business_traits:
 slices:
   - conference/login-auth
   - conference/prejoin-check
-  - conference/room-config
   - conference/room-lifecycle
-  - conference/room-invite
+  - conference/room-call
   - conference/participant-list
-  - conference/room-moderation
   - conference/device-control
   - conference/network-quality
   - conference/room-chat
@@ -66,9 +64,9 @@ slices:
 |------|--------|--------------|---------|
 | 1. 患者进入候诊室 | 患者 | `login-auth` + `prejoin-check` + 业务候诊室 | 患者完成登录、自检并进入候诊态，等待医生叫号；此时还未真正进入问诊房间 |
 | 2. 医生首页查看待接诊列表 | 医生 | 业务接诊列表 + 业务候诊状态 | 医生在工作台查看后台维护的待接诊列表、候诊状态和目标患者基础信息 |
-| 3. 医生进入诊室并呼叫患者 | 医生 | `room-config` + `room-lifecycle` + `room-invite` | 医生创建 / 进入本次问诊房间，并向目标患者发起叫号 / 邀请 |
-| 4. 患者进入诊室 | 患者 | `room-invite` + `room-lifecycle` | 患者接到叫号后接受邀请，真正进入问诊房间 |
-| 5. 医生开始问诊并填写病历 / 处方 / 查看资料 | 医生 | `video-layout` + `participant-list` + `room-moderation` + `device-control` + `room-chat` + `network-quality` + 业务病历面板 | 医生通过 `RoomView` 与患者进行 1v1 视频问诊，同时在业务面板中填写病历、处方和查看资料；必要时可执行禁麦、禁摄、禁聊等会中控制 |
+| 3. 医生进入诊室并呼叫患者 | 医生 | `room-lifecycle` + `room-call` | 医生创建 / 进入本次问诊房间，并向目标患者发起叫号 |
+| 4. 患者进入诊室 | 患者 | `room-call` + `room-lifecycle` | 患者接到叫号后接受呼叫，真正进入问诊房间 |
+| 5. 医生开始问诊并填写病历 / 处方 / 查看资料 | 医生 | `video-layout` + `participant-list` + `participant-management` + `device-control` + `room-chat` + `network-quality` + 业务病历面板 | 医生通过 `RoomView` 与患者进行 1v1 视频问诊，同时在业务面板中填写病历、处方和查看资料；必要时可执行禁麦、禁摄、禁聊等会中控制 |
 | 6. 医生结束问诊 | 医生 | `room-lifecycle` + `device-control` | 医生结束本次问诊，统一收口会中状态并释放本地设备 |
 | 7. 患者完成本次问诊 | 患者 | `room-lifecycle` + 业务完成页 | 患者离开问诊房间，进入问诊完成页或后续待支付 / 待取药 / 待评价流程 |
 
@@ -80,9 +78,9 @@ slices:
 |------|--------------|---------|
 | 1. 登录医生工作台 | login-auth | 完成 `SDKAppID / UserID / UserSig` 鉴权登录 |
 | 2. 查看待接诊列表 | 业务接诊列表 + 业务候诊状态 | 查看后台维护的待接诊顺序、候诊状态和目标患者信息 |
-| 3. 创建 / 进入诊室 | room-config + room-lifecycle | 生成本次问诊房间并进入医生侧诊室 |
+| 3. 创建 / 进入诊室 | room-lifecycle | 生成本次问诊房间并进入医生侧诊室 |
 | 4. 打开设备并确认状态 | device-control | 进入诊室后开启摄像头、麦克风，并处理权限拒绝、设备占用等异常 |
-| 5. 呼叫患者 | room-invite | 向指定患者发起叫号 / 入诊邀请 |
+| 5. 呼叫患者 | room-call | 向指定患者发起叫号 / 入诊呼叫 |
 
 ### 阶段二：问诊进行中
 
@@ -90,7 +88,7 @@ slices:
 |------|--------------|---------|
 | 1v1 视频承载 | video-layout | 使用 `RoomView` 承载医生与患者双画面 |
 | 医患身份与状态展示 | participant-list | 展示医生 / 患者标签、接诊状态、音视频状态 |
-| 会中控制 | room-moderation | 医生可按问诊秩序执行禁麦、禁摄、禁聊等控制，并把规则状态同步到设备和输入区 |
+| 会中控制 | participant-management | 医生可按问诊秩序执行禁麦、禁摄、禁聊等控制，并把规则状态同步到设备和输入区 |
 | 本地设备控制 | device-control | 控制摄像头、麦克风、扬声器，并处理权限或占用异常 |
 | 弱网提示与恢复建议 | network-quality | 展示弱网、重连中、超时告警，并提示是否降级互动强度 |
 | 图文提醒 / 补充说明 | room-chat | 发送文字提醒、检查说明或注意事项 |
@@ -118,8 +116,8 @@ slices:
 
 | 步骤 | Slice / 模块 | 核心操作 |
 |------|--------------|---------|
-| 1. 接收医生叫号 | room-invite | 接收问诊邀请或叫号提醒 |
-| 2. 真正进入诊室 | room-lifecycle | 接受邀请后进入已有问诊房间 |
+| 1. 接收医生叫号 | room-call | 接收问诊呼叫或叫号提醒 |
+| 2. 真正进入诊室 | room-lifecycle | 接受呼叫后进入已有问诊房间 |
 | 3. 打开本地设备 | device-control | 按权限和设备状态开启摄像头 / 麦克风 |
 | 4. 渲染患者问诊页 | video-layout + participant-list | 呈现医生主画面、患者自视图和身份状态 |
 
@@ -139,7 +137,7 @@ slices:
 |------|---------|------------------|
 | 患者无法进入候诊室 | 登录失败或业务候诊状态异常 | login-auth / 业务候诊室 |
 | 医生首页看不到待接诊列表 | 业务后台列表未同步或候诊状态数据缺失 | 业务接诊列表 / 业务候诊状态 |
-| 医生发起叫号后患者无响应 | 邀请未送达、用户不在线或状态未切换 | room-invite |
+| 医生发起叫号后患者无响应 | 呼叫未送达、用户不在线或状态未切换 | room-call |
 | 患者接到叫号但进不了诊室 | `roomId` 无效、密码错误或加入主链路失败 | room-lifecycle |
 | 问诊中无法开麦 / 开摄 | 设备占用、权限拒绝或本地设备异常 | device-control |
 | 视频画面正常但身份 / 状态不对 | 挂件层未正确绑定角色或状态字段 | participant-list / video-layout |

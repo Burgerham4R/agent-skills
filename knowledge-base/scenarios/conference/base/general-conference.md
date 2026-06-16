@@ -7,7 +7,6 @@ industry: generic
 slices:
   - conference/login-auth
   - conference/prejoin-check
-  - conference/room-config
   - conference/room-lifecycle
   - conference/participant-list
   - conference/video-layout
@@ -15,10 +14,9 @@ slices:
   - conference/network-quality
   - conference/room-chat
   - conference/screen-share
-  - conference/room-moderation
   - conference/participant-management
   - conference/room-schedule
-  - conference/room-invite
+  - conference/room-call
   - conference/beauty-effects
   - conference/virtual-background
 ---
@@ -53,7 +51,7 @@ slices:
    - 宫格布局、演讲者布局、共享时主画面切换，都是会议主舞台的基础能力
 5. **成员面板不仅是展示区，还是主持治理入口**：
    - 右侧成员列表通常直接承接静音、移除、设管理员、禁画面等操作
-   - 这意味着 `participant-list`、`participant-management`、`room-moderation` 在真实产品里是协同出现的
+   - 这意味着 `participant-list` 和 `participant-management` 在真实产品里是协同出现的
 6. **会中邀请和视频效果是通用会议里的高频增强项**：
    - 邀请更多成员入会，通常作为底部工具栏或右侧面板的常驻入口
    - 美颜、虚拟背景、背景替换等视频效果，也常被放进设置或视频效果面板，而不是完全后置能力
@@ -84,11 +82,11 @@ slices:
 
 - 先命中 **接入前提**：`login-auth`
 - 再命中 **会前预览与设备确认**：`prejoin-check`、`device-control`
-- 再命中 **房间主链路**：`room-lifecycle`、`room-config`
+- 再命中 **房间主链路**：`room-lifecycle`
 - 再命中 **参会人和画面状态层**：`participant-list`、`video-layout`
 - 再命中 **稳定性底座**：`network-quality`
 - 如果是完整会议产品，再补 **预约列表 / 到点入会**：`room-schedule`
-- 最后再根据是否涉及聊天、共享、主持控制、成员治理、会中补邀、视觉增强，补命中其他 slices
+- 最后再根据是否涉及聊天、共享、主持控制、成员治理、会中呼叫、视觉增强，补命中其他 slices
 
 ## 与行业场景的关系
 
@@ -108,7 +106,6 @@ slices:
 
 - `login-auth`
 - `prejoin-check`
-- `room-config`
 - `room-lifecycle`
 - `participant-list`
 - `video-layout`
@@ -116,10 +113,9 @@ slices:
 - `network-quality`
 - `room-chat`
 - `screen-share`
-- `room-moderation`
 - `participant-management`
 - `room-schedule`
-- `room-invite`
+- `room-call`
 - `beauty-effects`
 - `virtual-background`
 
@@ -140,9 +136,9 @@ slices:
 |------|----------|-----------------|------|
 | 1. 用户进入会议系统 | 完成账号登录，建立可用会话 | `conference/login-auth` | 所有会议后续动作都依赖稳定登录态。 |
 | 2. 进入会前预览首页 | 完成本地视频预览、麦克风 / 摄像头确认 | `conference/prejoin-check`, `conference/device-control`, `conference/beauty-effects`, `conference/virtual-background` | 完整会议产品里，会前预览通常是默认入口；视频效果是高频增强项。 |
-| 3. 创建 / 加入 / 预约会议 | 建立会议房间或确认未来会议安排 | `conference/room-lifecycle`, `conference/room-config`, `conference/room-schedule` | 新建、加入、预约列表、到点入会都应在这里收口。 |
+| 3. 创建 / 加入 / 预约会议 | 建立会议房间或确认未来会议安排 | `conference/room-lifecycle`, `conference/room-schedule` | 新建、加入、预约列表、到点入会都应在这里收口。 |
 | 4. 渲染会议主界面 | 呈现参会人、画面布局和基础状态 | `conference/participant-list`, `conference/video-layout` | 会中主界面通常包含宫格 / 演讲者布局、顶部状态栏和右侧信息面板。 |
-| 5. 进行会中协作 | 聊天、共享、主持控场、成员治理、会中邀请 | `conference/room-chat`, `conference/screen-share`, `conference/room-moderation`, `conference/participant-management`, `conference/room-invite` | 这些能力在正式会议产品里往往组合出现，而不是孤立使用。 |
+| 5. 进行会中协作 | 聊天、共享、主持控场、成员治理、会中呼叫 | `conference/room-chat`, `conference/screen-share`, `conference/participant-management`, `conference/room-call` | 这些能力在正式会议产品里往往组合出现，而不是孤立使用。 |
 | 6. 处理设备与网络异常 | 保证会议持续可用 | `conference/device-control`, `conference/network-quality`, `conference/room-lifecycle` | 弱网、断线、设备占用、权限拒绝等问题都应在会中流程里统一处理。 |
 | 7. 离会或结束会议 | 退出当前会议并清理会中状态 | `conference/room-lifecycle`, `conference/device-control` | 主持人结束会议与普通成员离会都属于流程收口阶段。 |
 
@@ -150,9 +146,9 @@ slices:
 
 - **登录进入系统** → `conference/login-auth`
 - **会前预览与设备确认** → `conference/prejoin-check`, `conference/device-control`
-- **创建 / 加入 / 预约会议** → `conference/room-lifecycle`, `conference/room-config`, `conference/room-schedule`
+- **创建 / 加入 / 预约会议** → `conference/room-lifecycle`, `conference/room-schedule`
 - **渲染成员与画面布局** → `conference/participant-list`, `conference/video-layout`
-- **按需叠加聊天、共享、会控、成员治理、会中邀请** → `conference/room-chat`, `conference/screen-share`, `conference/room-moderation`, `conference/participant-management`, `conference/room-invite`
+- **按需叠加聊天、共享、会控、成员治理、会中呼叫** → `conference/room-chat`, `conference/screen-share`, `conference/participant-management`, `conference/room-call`
 - **处理弱网、断线、设备异常** → `conference/network-quality`, `conference/room-lifecycle`, `conference/device-control`
 - **离会 / 结束并释放资源** → `conference/room-lifecycle`, `conference/device-control`
 
@@ -163,16 +159,16 @@ slices:
 | 用户登录并进入会议系统 | `conference/login-auth` | 所有会议能力都建立在统一鉴权和会话有效性的前提上。 |
 | 会前首页本地视频预览、麦克风 / 摄像头控制 | `conference/prejoin-check`, `conference/device-control` | 这是通用会议产品的高频入口形态。 |
 | 新建会议、加入会议、离开会议、结束会议 | `conference/room-lifecycle` | 通用会议最核心的主链路就是房间生命周期；它统一覆盖创建、加入、离开、恢复和结束。 |
-| 设置会议主题、密码、默认禁麦等初始规则 | `conference/room-config` | 这是会议在发起前被定义的配置层。 |
+| 设置会议主题、密码、默认禁麦等初始规则 | `conference/room-lifecycle` | 会议创建时的配置选项已整合到房间生命周期 slice 中。 |
 | 首页显示预约会议列表、会议排期、到点提醒 | `conference/room-schedule`, `conference/room-lifecycle` | 排期属于未来时间维度；到点后真正进房和结束仍回到房间生命周期。 |
 | 显示参会人列表、角色、发言态、设备态 | `conference/participant-list` | 会议内“谁在场、谁是什么状态”都汇总在这里。 |
 | 宫格布局、演讲者布局、共享时主画面切换 | `conference/video-layout`, `conference/screen-share` | 画面呈现由 `video-layout` 承担，共享状态由 `screen-share` 提供并驱动画面切换。 |
-| 右侧成员面板和更多成员操作 | `conference/participant-list`, `conference/participant-management`, `conference/room-moderation` | 成员面板不仅展示名单，也承接静音、移除、设管理员、禁画面等治理动作。 |
+| 右侧成员面板和更多成员操作 | `conference/participant-list`, `conference/participant-management` | 成员面板不仅展示名单，也承接静音、移除、设管理员、禁画面等治理动作。 |
 | 摄像头、麦克风、扬声器的开关、切换和异常恢复 | `conference/device-control` | 会中设备控制属于通用会议的基础底座能力。 |
 | 弱网提示、超时告警、断线恢复建议 | `conference/network-quality`, `conference/room-lifecycle` | 一个负责网络稳定性观测，一个负责真正的离房收口和重入恢复。 |
 | 会中聊天、消息互动、历史消息和禁聊联动 | `conference/room-chat` | 会议里的文本协作入口落在这里。 |
-| 屏幕共享、演示文档、汇报讲解 | `conference/screen-share`, `conference/video-layout`, `conference/room-moderation` | 共享是媒体能力，布局负责响应，会控负责约束共享权限。 |
-| 会中临时补邀、拉人入会 | `conference/room-invite`, `conference/participant-management`, `conference/room-lifecycle` | 邀请是信令链路，谁有权发起由成员治理约束，真正进房回到房间生命周期。 |
+| 屏幕共享、演示文档、汇报讲解 | `conference/screen-share`, `conference/video-layout`, `conference/participant-management` | 共享是媒体能力，布局负责响应，会控负责约束共享权限。 |
+| 会中临时呼叫、拉人入会 | `conference/room-call`, `conference/participant-management`, `conference/room-lifecycle` | 呼叫是信令链路，谁有权发起由成员治理约束，真正进房回到房间生命周期。 |
 | 美颜、虚化、背景替换等视频效果 | `conference/beauty-effects`, `conference/virtual-background`, `conference/device-control` | 这些是通用会议里的常见增强项，通常出现在会前预览或会中设置面板。 |
 | 中英文切换、黑白主题、品牌头部等产品壳层 | 业务会议外壳 + `conference/video-layout` | 这些能力会影响产品体验，但不应误拆成 RTC 原子能力。 |
 | 白板 / 画布 / 共创区与会议同屏展示 | `conference/video-layout`, `conference/screen-share` + 业务白板 / 画布模块 | 通用会议可以承接这类增强诉求；画布本身通常由业务模块实现，会议侧重点仍是视频区与共享区如何协同展示。 |
@@ -186,7 +182,6 @@ slices:
 
 - `conference/login-auth`
 - `conference/prejoin-check`
-- `conference/room-config`
 - `conference/room-lifecycle`
 - `conference/participant-list`
 - `conference/video-layout`
@@ -195,9 +190,8 @@ slices:
 - `conference/room-chat`
 - `conference/screen-share`
 - `conference/participant-management`
-- `conference/room-moderation`
 - `conference/room-schedule`
-- `conference/room-invite`
+- `conference/room-call`
 
 ### P1 按需补命中
 
@@ -205,6 +199,54 @@ slices:
 
 - `conference/beauty-effects`：本地美颜增强
 - `conference/virtual-background`：背景虚化与替换
+
+## 能力展示与 coverage 选择
+
+> **这是 topic Step 1.5 直接照抄并执行的章节**(coverage 多选变体,见 `scenario-spec.md`)。
+> 通用会议**不是**"全部 slice 一起装"的 Form A;它是"骨架必装 + 其他按显式需求补命中"。
+> 不要把整张 `slices:` 清单当成默认全集——那正是"用户没要美颜却被装上美颜"的根因。
+
+### 必装骨架(always on,不向用户提问)
+
+最小可开会的主链路,始终包含:
+
+- `conference/login-auth`
+- `conference/prejoin-check`
+- `conference/room-lifecycle`
+- `conference/participant-list`
+- `conference/video-layout`
+- `conference/device-control`
+- `conference/network-quality`
+
+### 可选模块(多选,默认只勾选命中用户需求的项)
+
+- `conference/room-chat` —— 会中聊天
+- `conference/screen-share` —— 屏幕共享 / 演示
+- `conference/participant-management` —— 成员治理(禁麦禁画、移除、设管理员、角色控制)
+- `conference/room-schedule` —— 预约会议 / 排期 / 到点入会
+- `conference/room-call` —— 会中呼叫 / 拉人入会
+- `conference/beauty-effects` —— 本地美颜
+- `conference/virtual-background` —— 背景虚化 / 替换
+
+### 执行规则(topic 必须遵守)
+
+1. **预勾选 = 仅命中用户显式需求。** 读 session 的 `target_features` 和用户原始 prompt,用本文件「再按显式词补命中增强 slices」一节的关键词映射,把命中的可选模块预勾选。**没被点名的可选模块一律默认不勾选**(尤其美颜 / 虚拟背景 / 预约 —— 不要因为"通用会议产品常见"就默认装上)。
+2. **展示文案**(translate to user's language):
+
+   ```
+   我帮你定位到「通用会议」场景。会议骨架(登录、会前预览、房间生命周期、成员列表、画面布局、设备控制、网络质量)会默认集成。
+
+   你的需求里我识别到要这些增强能力(已勾选):{命中的可选模块中文名}
+
+   还要加别的吗?(可多选;如果都不需要,请选择「以上都不需要」)
+   ```
+
+3. **AskUserQuestion**:对「可选模块」做一次多选(`multiSelect: true`),选项 label 用上面的中文名,**预勾选第 1 步命中的项**。一次超过 4 项时按"会中协作 / 视频效果 / 预约邀请"分组拆成多次问(遵守 4 选项上限)。**每组多选必须包含一个「以上都不需要」选项（value=`none`），放在选项列表末尾，作为用户显式拒绝该组所有能力的出口。选中`none`时，该组其他选项视为未勾选；同时选中`none`和其他选项时，以`none`为准（清空其他选择）。**
+4. **写 `confirmed_plan`**:`confirmed_plan = 必装骨架 + 用户最终选中的可选模块`(去重,保持上面声明的顺序)。这是 `init_slice_queue.py` 的唯一输入,后续 A2-Q1.5 业务决策、slice 循环、apply 都以它为准。
+5. **不要**把未选中的可选模块写进 `confirmed_plan`,也不要在生成代码时"顺手"加它们的按钮 / composable。
+6. `enhancement_level` 仅为兼容旧字段:全部可选模块都选 → `complete`,否则 → `minimal`。真正的范围以 `confirmed_plan` 为准。
+
+> **边界澄清**:如果用户原始 prompt 就是"做一个完整的通用会议产品 / 给我全套 / 完整版",则可选模块全选(等价 `complete`)。只有当用户点名了具体功能子集时,才按"骨架 + 命中项"收敛。
 
 ## 典型通用会议子场景的命中差异
 
@@ -239,8 +281,7 @@ slices:
 
 在默认会议骨架基础上补命中：
 
-- `conference/room-config`
-- `conference/room-moderation`
+- `conference/room-lifecycle`
 - `conference/screen-share`
 - `conference/participant-management`
 
@@ -251,20 +292,19 @@ slices:
 在默认会议骨架之外补命中：
 
 - `conference/room-schedule`
-- `conference/room-config`
 - `conference/room-lifecycle`
 
 如果业务由后台通过 REST API 先建房、到点后用户再进入，这仍然属于 `room-schedule + room-lifecycle` 的组合，不需要单独再拆服务端 slice。
 
-### 5. 会中补邀的协作会议
+### 5. 会中呼叫的协作会议
 
 补命中：
 
-- `conference/room-invite`
+- `conference/room-call`
 - `conference/participant-management`
 - `conference/room-lifecycle`
 
-这类场景强调“邀请确认”和“真正进房”是两段链路。
+这类场景强调"呼叫确认"和"真正进房"是两段链路。
 
 ### 6. 对视觉体验要求较高的会议
 
@@ -303,23 +343,23 @@ slices:
 
 - 如果场景识别阶段没有稳定命中教育场景、医疗场景或 webinar 场景，不要直接丢失这类需求。
 - 只要用户描述仍然落在“多人实时音视频开会”这条主线上，就应统一回落到 `通用会议场景`。
-- 这里的“多人实时音视频开会”可包含：会前预览、多人进房、主持控场、参会人列表、宫格 / 演讲者布局、设备切换、网络质量、会中聊天、共享演示、预约会议、会中补邀等通用会议能力。
+- 这里的“多人实时音视频开会”可包含：会前预览、多人进房、主持控场、参会人列表、宫格 / 演讲者布局、设备切换、网络质量、会中聊天、共享演示、预约会议、会中呼叫等通用会议能力。
 
 ### 再按显式词补命中增强 slices
 
 - 提到“会前检测 / 麦克风测试 / 摄像头测试 / 本地预览” → `conference/prejoin-check`
-- 提到“密码会议 / 默认禁麦 / 会议主题 / 初始规则” → `conference/room-config`
+- 提到"密码会议 / 默认禁麦 / 会议主题 / 初始规则" → `conference/room-lifecycle`
 - 提到“踢人 / 设管理员 / 成员管理 / 成员列表更多操作” → `conference/participant-management`
-- 提到“禁麦 / 禁摄 / 禁聊 / 主持人控场” → `conference/room-moderation`
+- 提到"禁麦 / 禁摄 / 禁聊 / 主持人控场" → `conference/participant-management`
 - 提到“聊天 / 会中消息 / 文本协作 / 右侧聊天面板” → `conference/room-chat`
 - 提到“共享屏幕 / 演示 / 汇报” → `conference/screen-share`, `conference/video-layout`
 - 提到“宫格布局 / 演讲者布局 / 主讲模式” → `conference/video-layout`
 - 提到“预约 / 排期 / 到点入会 / 会议列表” → `conference/room-schedule`
-- 提到“补邀 / 拉人入会 / 邀请在线用户 / 会中邀请” → `conference/room-invite`
+- 提到"呼叫入会 / 拉人入会 / 呼叫在线用户 / 会中呼叫" → `conference/room-call`
 - 提到“美颜 / 背景虚化 / 背景替换 / 视频效果” → `conference/beauty-effects`, `conference/virtual-background`
 - 提到“主题切换 / 中英文切换 / 品牌头部” → 业务会议外壳
 - 提到“后台创建房间 / 服务端解散房间 / REST API 建房” → `conference/room-lifecycle`, `conference/room-schedule`
 
 ## 一句话判断
 
-**如果客户说要做通用会议场景，或者需求本来属于教育、医疗、 webinar 等上层场景但当前没有被稳定识别出来，只要核心诉求仍是多人实时音视频会议，就应优先回落到一组以 `login-auth`、`prejoin-check`、`room-config`、`room-lifecycle`、`participant-list`、`video-layout`、`device-control`、`network-quality` 为中心的默认会议骨架 slices；其他如聊天、共享、成员治理、预约会议、会中补邀、美颜、虚拟背景和产品外壳等能力，再按显式需求补命中即可。**
+**如果客户说要做通用会议场景，或者需求本来属于教育、医疗、 webinar 等上层场景但当前没有被稳定识别出来，只要核心诉求仍是多人实时音视频会议，就应优先回落到一组以 `login-auth`、`prejoin-check`、`room-lifecycle`、`participant-list`、`video-layout`、`device-control`、`network-quality` 为中心的默认会议骨架 slices；其他如聊天、共享、成员治理、预约会议、会中呼叫、美颜、虚拟背景和产品外壳等能力，再按显式需求补命中即可。**

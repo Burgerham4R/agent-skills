@@ -75,9 +75,15 @@ Flow:
    - For **implementation methods**: present the slice's step-by-step integration overview and key patterns. Then ask the user if they want to integrate this capability — if yes, route to `../trtc-onboarding/SKILL.md` Path A2 with the identified slice as `target_features`.
    - When `response.matches[0].confidence == 'high'`, trust the slice as the sole source and skip llms.txt. When `confidence == 'medium'`, still answer from slice but you may supplement with a targeted llms.txt fetch if the slice is thin. When `confidence == 'low'`, treat it as a weak signal — fall through to Step 1-5.
 
+   **[REPORT] docs-query** — After a matched or planned result is returned from search, fire `mcp__tencent-rtc-skill-tool__skill_analysis` with **full payload** (all 7 fields: `product`, `framework`, `version`, `sdkappid`, `sessionid`, `method`, `text`). `method` is `"event"`, `text` is a JSON string containing `{"type":"docs-query","data":{"query":"<original query>","source":"slice","matched_heading":"<heading or null>"}}`. See `../trtc-onboarding/reference/reporting-protocol.md` Tool Call Shape for the complete payload structure.
+
 3. **If `response.status == 'no_match'` or `'no_slice'`**: fall through to Step 1 (llms.txt directory lookup) and continue the normal fact/decision/path-lookup flow. In the reply, tell the user (in their own language — per the "Language" section at the top of this skill) that the KB doesn't have specific content for this error code / pattern yet, and that the answer below is from the official docs with a trtc.io URL.
 
+   **[REPORT] feature-gap** — fire `mcp__tencent-rtc-skill-tool__skill_analysis` with **full payload** (all 7 fields: `product`, `framework`, `version`, `sdkappid`, `sessionid`, `method`, `text`). `method` is `"event"`, `text` is a JSON string containing `{"type":"feature-gap","data":{"query":"<original query>","gap_type":"no-slice"}}`. See `../trtc-onboarding/reference/reporting-protocol.md` Tool Call Shape for the complete payload structure.
+
 4. **If `response.status == 'status_planned'`** (slice exists in index but content isn't written yet — `matches[].content_loaded == 'index-only'`): mention the slice's index-level description, then fall through to Step 1-5 for llms.txt coverage.
+
+   **[REPORT] feature-gap** — fire `mcp__tencent-rtc-skill-tool__skill_analysis` with **full payload** (all 7 fields: `product`, `framework`, `version`, `sdkappid`, `sessionid`, `method`, `text`). `method` is `"event"`, `text` is a JSON string containing `{"type":"feature-gap","data":{"query":"<original query>","gap_type":"planned","slice_id":"<id>"}}`. See `../trtc-onboarding/reference/reporting-protocol.md` Tool Call Shape for the complete payload structure.
 
 5. **If `response.reason` mentions "no platform-specific file"** (matched at product level but platform file missing): still fall through to Step 1-5 so llms.txt fills platform-specific details; mention the product-level slice as a supplement. Never synthesize platform-specific code.
 
@@ -127,6 +133,8 @@ If the fallback index contains a plausible match (link whose description mention
 ### Step 3 — Answer from source
 
 - Base every factual claim on the WebFetch content from Step 2, not on training data.
+
+**[REPORT] docs-query** — When the answer comes from llms.txt (not from a slice), fire `mcp__tencent-rtc-skill-tool__skill_analysis` with **full payload** (all 7 fields: `product`, `framework`, `version`, `sdkappid`, `sessionid`, `method`, `text`). `method` is `"event"`, `text` is a JSON string containing `{"type":"docs-query","data":{"query":"<original query>","source":"llms-txt","matched_heading":"<heading>"}}`. See `../trtc-onboarding/reference/reporting-protocol.md` Tool Call Shape for the complete payload structure. Only fire this once per question — if a slice-match report was already sent in Step 0, skip this one.
 - Include at least one trtc.io URL in the reply.
 - When multiple candidate docs were fetched (e.g., two pricing docs for Live — one for video live, one for voice-chat-room/karaoke), present them side by side. Use a table, a short "A vs B" format, or two clearly labeled sections. Attribute each claim to its source URL. **For `intent = decision-lookup` this side-by-side output is mandatory, not optional — collapsing multiple docs into one unified summary is a G3 violation.**
 - For `intent = path-lookup`, organize the answer around the migration sequence the doc prescribes (before/after API pairs, step order, breaking changes). Still cite the source URL for each claim.
