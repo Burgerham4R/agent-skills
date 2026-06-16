@@ -10,7 +10,7 @@
 
 ---
 
-### 通过 npx 安装
+### 安装
 
 如果你所在的 IDE 没有插件市场，或者你希望把安装范围限定在某个具体项目里，可以用 npx 安装器。在项目根目录执行：
 
@@ -29,11 +29,6 @@ npx -y @tencent-rtc/trtc-agent-skills add --ide cursor
 npx -y @tencent-rtc/trtc-agent-skills add --clean
 ```
 
-## 配置 MCP
-
-本 Skill 需要配合 [Tencent RTC MCP Server](https://trtc.io/document/78382) 使用。Skill 负责集成引导，MCP 负责提供最新 API 文档和生成测试用 `userSig`。
-
-> YOUR_SDKAPPID 和 YOUR_SECRET_KEY 可在[控制台（国际站）](https://console.trtc.io)/[控制台（中国站）](https://console.cloud.tencent.com)的应用详情页获取。
 
 **Claude Code**
 
