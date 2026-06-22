@@ -1,5 +1,5 @@
 {
-  "name": "@tencent-rtc/trtc-agent-skills",
+  "name": "@burgerham4r/trtc-agent-skills",
   "version": "0.1.2",
   "description": "Installer for the TRTC Agent Skills suite (Chat, Call, RTC Engine, Live, Conference) + knowledge base, with one-command MCP setup for Claude Code / Cursor / CodeBuddy / Codex.",
   "bin": {
