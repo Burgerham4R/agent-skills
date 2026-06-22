@@ -5,9 +5,9 @@
 /**
  * @tencent-rtc/trtc-agent-skills installer
  *
- * Installs the TRTC AI Integration skill suite (6 cross-referencing skills:
- * trtc + trtc-onboarding/docs/topic/search/apply) plus the shared
- * knowledge-base into your IDE's skills directory, and wires up the
+ * Installs the TRTC AI Integration skill suite (cross-referencing skills:
+ * trtc + trtc-onboarding/docs/topic/search/apply + trtc-ai-service) plus the
+ * shared knowledge-base into your IDE's skills directory, and wires up the
  * `tencent-rtc-skill-tool` MCP server (used for prompt / runtime telemetry).
  *
  * IMPORTANT — why skills are copied as SIBLING DIRECTORIES:
@@ -50,15 +50,21 @@ const SKILLS_SRC  = path.join(PKG_ROOT, "skills");
 const KB_SRC      = path.join(PKG_ROOT, "knowledge-base");
 const HOOKS_SRC   = path.join(PKG_ROOT, "hooks");
 
-// The 6 skills that make up the suite. Order is cosmetic; `trtc` is the entry.
-const SKILL_NAMES = [
-  "trtc",
-  "trtc-onboarding",
-  "trtc-docs",
-  "trtc-topic",
-  "trtc-search",
-  "trtc-apply",
-];
+// Dynamically discover all skills under SKILLS_SRC. Each skill must be a
+// directory containing a SKILL.md entry point. `trtc` is always listed first;
+// the rest are sorted alphabetically. This avoids the stale-hardcoded-list
+// problem — adding a new skill directory is enough to get it installed.
+function getSkillNames() {
+  return fs.readdirSync(SKILLS_SRC, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .filter(name => fs.existsSync(path.join(SKILLS_SRC, name, "SKILL.md")))
+    .sort((a, b) => {
+      if (a === "trtc") return -1;
+      if (b === "trtc") return 1;
+      return a.localeCompare(b);
+    });
+}
 
 // IDE skill-install targets (project-level). Each IDE reads skills from a
 // different directory, but the layout inside is identical: one dir per skill.
@@ -290,13 +296,20 @@ function printHelp() {
 }
 
 function listSkills() {
+  const descriptions = {
+    "trtc":             "Entry router — detects product/platform, routes to sub-skills",
+    "trtc-ai-service":  "AI customer service scenarios (TRTC Conversational AI)",
+    "trtc-onboarding":  "Get-started / integration / troubleshooting flow",
+    "trtc-docs":        "Docs & error-code lookup",
+    "trtc-topic":       "Step-by-step scenario walkthrough",
+    "trtc-search":      "Internal slice lookup (AI-facing)",
+    "trtc-apply":       "Internal compile/integration quality gate",
+  };
   console.log(`\n  ${c.bold("Skills shipped in this package:")}\n`);
-  console.log(`  ${c.cyan("trtc/")}            ${c.dim("Entry router — detects product/platform, routes to sub-skills")}`);
-  console.log(`  ${c.cyan("trtc-onboarding/")} ${c.dim("Get-started / integration / troubleshooting flow")}`);
-  console.log(`  ${c.cyan("trtc-docs/")}       ${c.dim("Docs & error-code lookup")}`);
-  console.log(`  ${c.cyan("trtc-topic/")}      ${c.dim("Step-by-step scenario walkthrough")}`);
-  console.log(`  ${c.cyan("trtc-search/")}     ${c.dim("Internal slice lookup (AI-facing)")}`);
-  console.log(`  ${c.cyan("trtc-apply/")}      ${c.dim("Internal compile/integration quality gate")}`);
+  for (const name of getSkillNames()) {
+    const desc = descriptions[name] || "";
+    console.log(`  ${c.cyan(name + "/")}` + (desc ? ` ${c.dim(desc)}` : ""));
+  }
   console.log("");
 }
 
@@ -304,7 +317,7 @@ function listSkills() {
 function cleanSkills(skillsRootAbs) {
   if (!fs.existsSync(skillsRootAbs)) return 0;
   let wiped = 0;
-  for (const name of SKILL_NAMES) {
+  for (const name of getSkillNames()) {
     const target = path.join(skillsRootAbs, name);
     if (fs.existsSync(target)) { rmrf(target); wiped++; }
   }
@@ -385,7 +398,7 @@ function cleanHooksSettings(ideList, resolvedRoot) {
 
 function installSkills(skillsRootAbs) {
   ensureDir(skillsRootAbs);
-  for (const name of SKILL_NAMES) {
+  for (const name of getSkillNames()) {
     const src = path.join(SKILLS_SRC, name);
     if (fs.existsSync(src)) {
       copyRecursive(src, path.join(skillsRootAbs, name));
@@ -812,7 +825,7 @@ function main() {
     }
 
     installSkills(skillsRootAbs);
-    for (const name of SKILL_NAMES) console.log(c.green("    ✓ ") + name + "/");
+    for (const name of getSkillNames()) console.log(c.green("    ✓ ") + name + "/");
 
     const kbDest = copyKnowledgeBase(skillsRootAbs);
     console.log(c.green("    ✓ ") + "knowledge-base/ " + c.dim("→ " + kbDest));

@@ -50,6 +50,7 @@ The skill saves your progress in the project. If you close the tool and come bac
 | Product | Description | Availability |
 |---------|-------------|--------------|
 | **Conference** | Video conferencing — multi-party meetings, screen sharing, in-meeting chat | Web ✅ |
+| **AI Service** | AI customer service — voice agent, intelligent Q&A, conversational AI powered by TRTC Conversational AI | Web ✅ |
 | **Live** | Interactive live streaming — anchor/audience roles, co-hosting, barrage, gifts, beauty filters | Coming soon |
 | **Chat** | Instant messaging — messages, conversations, groups, user profiles | Coming soon |
 | **Call** | Audio/video calling — 1-on-1 and group calls | Coming soon |
