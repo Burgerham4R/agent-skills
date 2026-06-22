@@ -10,12 +10,14 @@
 
 当用户提出 TRTC 相关问题时：
 
-1. **识别产品**：Chat / Call / RTC Engine / Live / Conference
+1. **识别产品**：Chat / Call / RTC Engine / Live / Conference / AI Service
 2. **识别平台**：Web / Android / iOS / Flutter / Electron / Unity
 3. **读取知识库**：先读 `knowledge-base/slices/{product}/` 下的产品级概览，再读 `{product}/{platform}/` 下的平台实现细节
 4. **引用来源**：标明参考的 slice ID 和官方文档链接
 
 **新用户检测**：当用户首次使用或描述从零开始的集成需求时，优先进入 `skills/trtc-onboarding/SKILL.md` 引导流程。
+
+**AI 客服场景识别**：当用户描述搭建 AI 客服、智能客服、对话式 AI 等场景时，直接路由到 `skills/trtc-ai-service/SKILL.md`。该路径使用 TRTC Conversational AI，拥有独立的原子能力模型和适配器层，不经过标准的 onboarding/topic 流程。
 
 ## 关键路径
 
