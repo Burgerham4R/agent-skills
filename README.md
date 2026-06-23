@@ -58,12 +58,12 @@ The skill saves your progress in the project. If you close the tool and come bac
 
 ### Conversational AI — Supported Scenarios
 
-Conversational AI is a standalone product built on TRTC's voice and LLM capabilities. The `trtc-ai-service` skill currently supports the following scenarios:
+Conversational AI is a standalone product built on TRTC's voice and LLM capabilities. The following application scenarios are supported:
 
-| Scenario | Description |
-|----------|-------------|
-| **AI Customer Service** | Build a complete AI-powered customer service application — voice agent, knowledge base, human handoff, and session summary. Includes a ready-to-use web demo UI. |
-| **Custom Builder** | Integrate specific Conversational AI capabilities (conversation core, tool calling, knowledge base, etc.) into your own project. |
+| Scenario | Description | Status |
+|----------|-------------|--------|
+| **AI Customer Service** | Build an AI-powered voice customer service agent that can answer customer questions, look up knowledge base articles, escalate to human agents, and summarize conversations — all through natural voice interaction. | ✅ Available |
+| **AI Oral Practice** | Practice spoken language with an AI conversation partner that listens, responds, and gives feedback in real time — ideal for language learning and interview rehearsal. | Coming soon |
 
 
 ---
