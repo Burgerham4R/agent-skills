@@ -45,7 +45,7 @@ Before identifying product / platform, check if an onboarding session is already
 | **RTC Engine** | 进房、退房、推流、拉流、混流、音视频、采集、编码、码率、低延时、SEI、TRTC 引擎 | enter room, leave room, publish stream, play stream, mix stream, audio/video, capture, encoding, bitrate, low latency, SEI, RTC engine | `TRTC`, `TRTCCloud` |
 | **Live** | 直播、推流、连麦、观众、主播、弹幕、礼物、打赏、美颜、变声、开播、下播、PK、房管 | live streaming, publish, co-guest, co-host, audience, host, anchor, barrage, danmu, gift, beauty filter, voice changer, start broadcast, end broadcast, PK, moderator | `AtomicXCore`, `LiveCoreView`, `LiveListStore` |
 | **Conference** | 会议、多人视频、视频会议、入会、离会、创建会议、预约会议、参会人、会控、屏幕共享、举手、录制、等候室、虚拟背景、静音全员 | meeting, multi-person video, video conferencing, join meeting, leave meeting, create meeting, schedule meeting, participant, moderation, screen share, raise hand, record, waiting room, virtual background, mute all | `TUIRoomKit` |
-| **AI Service** | AI客服、智能客服、对话式AI、语音客服、语音助手 | AI customer service, conversational AI demo, voice agent, intelligent Q&A, build AI agent, integrate AI service | TRTC Conversational AI |
+| **Conversational AI** | AI客服、智能客服、对话式AI、语音客服、语音助手 | AI customer service, conversational AI demo, voice agent, intelligent Q&A, build AI agent, integrate AI service | TRTC Conversational AI |
 
 If ambiguous, ask — keep it easy: "Your question sounds like it could be about Chat (messaging) or RTC Engine (audio/video). Which one?"
 

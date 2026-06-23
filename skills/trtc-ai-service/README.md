@@ -40,7 +40,47 @@ You never open a terminal or run a script manually.
 > **Install anywhere**: This Skill can live in a project subdirectory, `.agents/skills/`, `.codebuddy/skills/`, or anywhere else —
 > it does **not** need to be at the workspace root. Scripts are self-locating; the Agent just needs to use absolute paths.
 
-Trigger it by typing any of these keywords in the AI chat window:
+### Installation
+
+#### Codex CLI
+
+**User-level** (recommended — available across all projects):
+```bash
+/skills install https://github.com/Burgerham4R/ai-customer-service-skill
+```
+
+**Project-level** (only available in the current project):
+```bash
+# The skill will be installed to ./.codex/skills/ (Cmd+Shift+. to show hidden folders in Finder)
+/skills install --project https://github.com/Burgerham4R/ai-customer-service-skill
+```
+
+#### Claude Code CLI
+
+**User-level** (recommended — available across all projects):
+```bash
+mkdir -p ~/.claude/skills
+git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ~/.claude/skills/ai-customer-service-skill
+```
+
+**Project-level** (only available in the current project):
+```bash
+mkdir -p ./.claude/skills
+git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ./.claude/skills/ai-customer-service-skill
+```
+
+#### Other agents (CodeBuddy / Cursor / etc.)
+
+Clone to any location and point your agent to `SKILL.md`:
+```bash
+git clone https://github.com/Burgerham4R/ai-customer-service-skill.git
+# Then tell your agent:
+# "Load the Skill from /path/to/ai-service-skill/SKILL.md"
+```
+
+> **After installation, restart your CLI session** to ensure the Skill is properly registered and loaded.
+
+### Trigger keywords
 
 - "AI customer service" / "build customer service" / "customer service bot"
 - "TRTC + customer service" / "voice agent + customer service"
@@ -48,11 +88,13 @@ Trigger it by typing any of these keywords in the AI chat window:
 
 ## What are the 3 keys?
 
-To get the customer service agent running, you need 3 cloud service credentials. Don't worry — they're just 3 strings you copy-paste from the corresponding websites:
+To get the customer service agent running, you need 3 cloud service credentials. Don't worry — they're just 3 strings you copy-paste from the corresponding websites.
+
+> **Tencent RTC (trtc.io)** is Tencent Cloud's international Real-Time Communication brand. The TRTC Conversational AI service runs on Tencent Cloud infrastructure — your TRTC account and Tencent Cloud account are linked through a unified login system. When you get your API Key, the system will automatically sync your login session.
 
 | Key | Purpose | Where to find it |
 |-----|---------|-----------------|
-| Key 1: Tencent Cloud API Key | Proves you have permission to use Tencent Cloud voice & calling services | https://console.cloud.tencent.com/cam/capi |
+| Key 1: Tencent Cloud API Key | Proves you have permission to use Tencent Cloud voice & calling services | https://console.tencentcloud.com/cam/capi |
 | Key 2: TRTC Application Credentials | Lets the agent make calls and do voice chat | https://console.trtc.io/app |
 | Key 3: LLM API Key | Lets the agent "think" — understand queries and respond | Your registered AI service website (e.g. OpenAI, DeepSeek, etc.) |
 
@@ -66,7 +108,7 @@ To get the customer service agent running, you need 3 cloud service credentials.
 | Knowledge Base | Upload docs, agent auto-retrieves and answers FAQ | ✅ Simulated demo | 🔘 Optional |
 | Human Handoff | Complex issues auto-escalate to a human agent | ✅ Simulated demo | 🔘 Optional |
 | Tool Calling | Agent can proactively query data from your system | ❌ Not supported | 🔘 Optional |
-| Session Summary | Auto-generates a summary after each conversation | ❌ Not supported | 🔘 Optional |
+| Session Summary | Auto-generates a summary after each conversation | ✅ Simulated demo | 🔘 Optional |
 
 > "Simulated demo" means: the UI and workflow are complete, but uses demo data without connecting to a real business system. For real integration, choose "Integrate into My System".
 

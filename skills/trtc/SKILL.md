@@ -46,16 +46,16 @@ You help developers integrate and troubleshoot TRTC (Tencent Real-Time Communica
 
 ---
 
-## AI Service fast-path
+## Conversational AI fast-path
 
-If the user's request matches an AI customer service scenario — building or
+If the user's request matches a Conversational AI scenario — building or
 integrating an AI-powered customer service agent, intelligent Q&A system, or
 TRTC Conversational AI capabilities — route directly to
 `../trtc-ai-service/SKILL.md`. This path uses TRTC Conversational AI with its
 own capability model and adapter layer, and does not follow the standard
 product/platform/scenario routing below.
 
-**AI Service triggers** (match any of the following patterns):
+**Conversational AI triggers** (match any of the following patterns):
 
 - "AI客服" / "智能客服" / "AI customer service"
 - "build AI agent" / "搭建AI客服" / "搭建智能客服"
@@ -70,8 +70,8 @@ When triggered:
    detection, or any routing sections below. Do NOT route to onboarding.
 
 > **Why a fast-path**: AI customer service uses TRTC Conversational AI
-> (product = "AI Service", platform = "Conversational AI"). It has its own
-> capability model (`capabilities/`), scenario recipes (`scenarios/`),
+> (product = "Conversational AI"). It has its own capability model
+> (`capabilities/`), scenario recipes (`scenarios/`),
 > tech-stack adapters (`auto_adapters/`), and automation scripts — none of
 > which map to the standard `product × platform × scenario` matrix below.
 > Routing through onboarding or topic would trigger their pre-flight checks

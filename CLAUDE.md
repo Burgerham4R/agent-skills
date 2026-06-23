@@ -10,7 +10,7 @@
 
 当用户提出 TRTC 相关问题时：
 
-1. **识别产品**：Chat / Call / RTC Engine / Live / Conference / AI Service
+1. **识别产品**：Chat / Call / RTC Engine / Live / Conference / Conversational AI
 2. **识别平台**：Web / Android / iOS / Flutter / Electron / Unity
 3. **读取知识库**：先读 `knowledge-base/slices/{product}/` 下的产品级概览，再读 `{product}/{platform}/` 下的平台实现细节
 4. **引用来源**：标明参考的 slice ID 和官方文档链接

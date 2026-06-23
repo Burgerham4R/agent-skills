@@ -40,7 +40,45 @@ AI（自动完成所有操作）：
 > **任意位置安装**：本 Skill 可以放在项目子目录、`.agents/skills/`、`.codebuddy/skills/` 或任何位置——
 > **不需要**放在工作区根目录。脚本会自动定位自身路径，Agent 只需使用绝对路径。
 
-在 AI 聊天窗口中输入以下任意关键词即可触发：
+### 安装方式
+
+#### Codex CLI
+
+**用户级安装**（推荐 — 所有项目均可使用）：
+```bash
+/skills install https://github.com/Burgerham4R/ai-customer-service-skill
+```
+
+**项目级安装**（仅当前项目可用）：
+```bash
+# Skill 将安装到 ./.codex/skills/（访达中按 Cmd+Shift+. 可显示隐藏文件夹）
+/skills install --project https://github.com/Burgerham4R/ai-customer-service-skill
+```
+
+#### Claude Code CLI
+
+**用户级安装**（推荐 — 所有项目均可使用）：
+```bash
+mkdir -p ~/.claude/skills
+git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ~/.claude/skills/ai-customer-service-skill
+```
+
+**项目级安装**（仅当前项目可用）：
+```bash
+mkdir -p ./.claude/skills
+git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ./.claude/skills/ai-customer-service-skill
+```
+
+#### 其他 Agent（CodeBuddy / Cursor 等）
+
+克隆到任意位置，然后让 Agent 加载 `SKILL.md`：
+```bash
+git clone https://github.com/Burgerham4R/ai-customer-service-skill.git
+# 然后对你的 Agent 说：
+# "从 /path/to/ai-service-skill/SKILL.md 加载这个 Skill"
+```
+
+> **安装完成后，请重启 CLI 会话** 以确保 Skill 被正确注册和加载。
 
 - "AI客服" / "搭建客服" / "客服机器人"
 - "TRTC + 客服" / "语音智能体 + 客服"
@@ -50,9 +88,11 @@ AI（自动完成所有操作）：
 
 要让客服智能体跑起来，你需要 3 个云服务凭证。别担心——它们只是从相应网站复制粘贴的 3 个字符串：
 
+> **Tencent RTC (trtc.io)** 是腾讯云旗下的国际实时音视频通信品牌。TRTC Conversational AI 服务基于腾讯云基础设施运行——你的 TRTC 账号和腾讯云账号通过统一登录体系关联。获取 API Key 时，系统会自动同步你的登录状态。
+
 | 密钥 | 用途 | 获取地址 |
 |------|------|---------|
-| 密钥 1：腾讯云 API Key | 证明你有权限使用腾讯云语音和通话服务 | https://console.cloud.tencent.com/cam/capi |
+| 密钥 1：Tencent Cloud API Key | 证明你有权限使用 TRTC 语音和通话服务 | https://console.tencentcloud.com/cam/capi |
 | 密钥 2：TRTC 应用凭证 | 让智能体能够拨打电话和进行语音聊天 | https://console.trtc.io/app |
 | 密钥 3：LLM API Key | 让智能体能够"思考"——理解用户问题并回复 | 你注册的 AI 服务网站（如 OpenAI、DeepSeek 等） |
 
@@ -66,7 +106,7 @@ AI（自动完成所有操作）：
 | 知识库 | 上传文档，智能体自动检索并回答常见问题 | ✅ 模拟演示 | 🔘 可选 |
 | 人工转接 | 复杂问题自动转接至人工客服 | ✅ 模拟演示 | 🔘 可选 |
 | 工具调用 | 智能体可主动查询你的系统中的数据 | ❌ 不支持 | 🔘 可选 |
-| 会话摘要 | 每次对话后自动生成摘要 | ❌ 不支持 | 🔘 可选 |
+| 会话摘要 | 每次对话后自动生成摘要 | ✅ 模拟演示 | 🔘 可选 |
 
 > "模拟演示"指：界面和工作流是完整的，但使用的是演示数据，未接入真实业务系统。如需真实接入，请选择"集成到我的系统"。
 

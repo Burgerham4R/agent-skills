@@ -50,11 +50,20 @@ The skill saves your progress in the project. If you close the tool and come bac
 | Product | Description | Availability |
 |---------|-------------|--------------|
 | **Conference** | Video conferencing — multi-party meetings, screen sharing, in-meeting chat | Web ✅ |
-| **AI Service** | AI customer service — voice agent, intelligent Q&A, conversational AI powered by TRTC Conversational AI | Web ✅ |
+| **Conversational AI** | TRTC Conversational AI — AI voice agents, intelligent Q&A, human handoff, session summaries | Web ✅ |
 | **Live** | Interactive live streaming — anchor/audience roles, co-hosting, barrage, gifts, beauty filters | Coming soon |
 | **Chat** | Instant messaging — messages, conversations, groups, user profiles | Coming soon |
 | **Call** | Audio/video calling — 1-on-1 and group calls | Coming soon |
 | **RTC Engine** | Low-level real-time audio/video engine — room management, publishing, subscribing | Coming soon |
+
+### Conversational AI — Supported Scenarios
+
+Conversational AI is a standalone product built on TRTC's voice and LLM capabilities. The `trtc-ai-service` skill currently supports the following scenarios:
+
+| Scenario | Description |
+|----------|-------------|
+| **AI Customer Service** | Build a complete AI-powered customer service application — voice agent, knowledge base, human handoff, and session summary. Includes a ready-to-use web demo UI. |
+| **Custom Builder** | Integrate specific Conversational AI capabilities (conversation core, tool calling, knowledge base, etc.) into your own project. |
 
 
 ---
