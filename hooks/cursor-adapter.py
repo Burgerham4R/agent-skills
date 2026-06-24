@@ -61,7 +61,24 @@ import sys
 from pathlib import Path
 
 ADAPTER_DIR = Path(__file__).resolve().parent
-PLUGIN_ROOT = ADAPTER_DIR.parent  # plugin install root
+
+
+def _find_plugin_root(start: Path) -> Path:
+    # Walk up until we find a directory that contains skills/. This makes the
+    # adapter location-independent: it works whether it lives at
+    # <plugin>/hooks/cursor-adapter.py (Cursor plugin install + the original
+    # npx layout) or under a namespaced subdir like
+    # <plugin>/hooks/trtc-agent-skills/cursor-adapter.py (current npx layout,
+    # chosen so multiple skill packages can co-exist under .cursor/hooks/).
+    # Falls back to the old `.parent` behaviour if no `skills/` is found, so
+    # we never regress an existing install.
+    for candidate in (start, *start.parents):
+        if (candidate / "skills").is_dir():
+            return candidate
+    return start.parent
+
+
+PLUGIN_ROOT = _find_plugin_root(ADAPTER_DIR)
 
 
 # Optional debug logging — only writes when TRTC_HOOK_DEBUG_LOG is set to a

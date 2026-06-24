@@ -100,7 +100,11 @@ const MCP_SERVER_ENTRY = "@tencent-rtc/skill-tool@latest";
 //     $HOME/.cursor/plugins/local/... reference is rewritten to the actual path.
 const HOOKS_TARGETS = {
   claude: {
-    hooksDir:        ".claude/hooks",
+    // claude/codebuddy/codex hooks.json points hook commands directly at
+    // ${PLUGIN_ROOT}/skills/.../guardrails/xxx.py — there is nothing to copy
+    // into a hooks/ dir for these IDEs, so we leave hooksDir undefined and
+    // skip the copy step entirely. This keeps .{ide}/hooks/ free for other
+    // skill packages to use without us clobbering it.
     settingsFile:    ".claude/settings.json",
     sourceConfig:    "hooks.json",
     rootPlaceholder: "${CLAUDE_PLUGIN_ROOT}",
@@ -108,7 +112,6 @@ const HOOKS_TARGETS = {
     fallbackPlaceholder: "${CODEBUDDY_PLUGIN_ROOT}",
   },
   codebuddy: {
-    hooksDir:        ".codebuddy/hooks",
     settingsFile:    ".codebuddy/settings.json",
     sourceConfig:    "hooks.json",
     rootPlaceholder: "${CODEBUDDY_PLUGIN_ROOT}",
@@ -116,7 +119,6 @@ const HOOKS_TARGETS = {
     fallbackPlaceholder: "${CLAUDE_PLUGIN_ROOT}",
   },
   codex: {
-    hooksDir:        ".codex/hooks",
     // Codex loads hooks from <repo>/.codex/hooks.json (or ~/.codex/hooks.json)
     // — NOT from .agents/settings.json. See https://developers.openai.com/codex/hooks
     settingsFile:    ".codex/hooks.json",
@@ -126,7 +128,12 @@ const HOOKS_TARGETS = {
     fallbackPlaceholder: "${CODEBUDDY_PLUGIN_ROOT}",
   },
   cursor: {
-    hooksDir:        ".cursor/hooks",
+    // Namespace under .cursor/hooks/trtc-agent-skills/ so we never collide
+    // with another skill's hooks/ contents. cursor-adapter.py auto-detects
+    // PLUGIN_ROOT by walking up to the nearest dir containing skills/, so
+    // this nested location still resolves correctly.
+    hooksDir:        ".cursor/hooks/trtc-agent-skills",
+    hooksFiles:      ["cursor-adapter.py"],
     settingsFile:    ".cursor/hooks.json",
     sourceConfig:    "hooks-cursor.json",
     // The hardcoded path string we need to rewrite in hooks-cursor.json.
@@ -310,9 +317,24 @@ function cleanSkills(skillsRootAbs) {
   // also wipe a co-located knowledge-base copy if present
   const kb = path.join(path.dirname(skillsRootAbs), "knowledge-base");
   if (fs.existsSync(kb)) { rmrf(kb); }
-  // also wipe a co-located hooks/ copy if present (npx-mode hook scripts)
+  // Hooks cleanup: only remove our own files, never rmrf the whole hooks/
+  // dir — another skill package may be sharing it.
   const hooks = path.join(path.dirname(skillsRootAbs), "hooks");
-  if (fs.existsSync(hooks)) { rmrf(hooks); }
+  if (fs.existsSync(hooks)) {
+    // 1) preferred current layout: hooks/trtc-agent-skills/
+    rmrf(path.join(hooks, "trtc-agent-skills"));
+    // 2) legacy layout: hooks/<file> at the top level. Only remove files we
+    //    know we shipped; leave anything else (other skills, user scripts).
+    const LEGACY_FILES = ["cursor-adapter.py", "hooks.json", "hooks-cursor.json"];
+    for (const f of LEGACY_FILES) {
+      const p = path.join(hooks, f);
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) rmrf(p);
+    }
+    // If hooks/ is now empty, remove it; otherwise leave it for other owners.
+    try {
+      if (fs.readdirSync(hooks).length === 0) rmrf(hooks);
+    } catch { /* ignore */ }
+  }
   return wiped;
 }
 
@@ -432,20 +454,29 @@ function rewriteHooksContent(content, target, ideAbsRoot) {
     // We need the resulting JSON string to evaluate to a shell-quoted path so
     // project paths with spaces don't break shell parsing — that means
     // emitting `\"<abs>\"` (JSON-escaped quotes) into the string.
-    const cursorAdapterAbs = path.join(ideAbsRoot, "hooks", "cursor-adapter.py");
+    const cursorAdapterAbs = path.join(ideAbsRoot, "hooks", "trtc-agent-skills", "cursor-adapter.py");
     const replacement = `\\"${cursorAdapterAbs}\\"`;
     out = out.split(target.cursorAdapterPlaceholder).join(replacement);
   }
   return out;
 }
 
-// Copy the hooks/ source directory into <root>/.{ide}/hooks/ so the dispatched
-// scripts (cursor-adapter.py + the underlying guardrail scripts referenced by
-// hooks.json) sit next to the IDE's skills/.
+// Copy only the hook files this IDE actually needs into a namespaced subdir
+// (.cursor/hooks/trtc-agent-skills/), so we never wipe a sibling skill's
+// hooks/ contents. IDEs whose hook commands point straight at skills/ (claude,
+// codebuddy, codex) declare no hooksDir and skip this step entirely.
 function copyHooksDir(target, resolvedRoot) {
+  if (!target.hooksDir) return null;
   const dest = path.join(resolvedRoot, target.hooksDir);
   rmrf(dest);
-  copyRecursive(HOOKS_SRC, dest);
+  ensureDir(dest);
+  const files = target.hooksFiles && target.hooksFiles.length
+    ? target.hooksFiles
+    : fs.readdirSync(HOOKS_SRC).filter(f => !f.endsWith(".json"));
+  for (const f of files) {
+    const src = path.join(HOOKS_SRC, f);
+    if (fs.existsSync(src)) copyRecursive(src, path.join(dest, f));
+  }
   return dest;
 }
 
@@ -535,9 +566,23 @@ function installHooks(ideList, resolvedRoot) {
     const target = HOOKS_TARGETS[ide];
     if (!target) continue;
 
-    const ideAbsRoot = path.join(resolvedRoot, path.dirname(target.hooksDir));
+    // ideAbsRoot is "<resolvedRoot>/.{ide}" — the directory that holds skills/,
+    // hooks/ (when used), settings.json. Derive it from settingsFile so it
+    // doesn't depend on the optional hooksDir.
+    const settingsRel = target.settingsFile;
+    const ideRelRoot = path.isAbsolute(settingsRel)
+      ? path.dirname(settingsRel)
+      : settingsRel.split(path.sep)[0];
+    const ideAbsRoot = path.isAbsolute(settingsRel)
+      ? path.dirname(settingsRel)
+      : path.join(resolvedRoot, ideRelRoot);
+
     const hooksDest = copyHooksDir(target, resolvedRoot);
-    console.log(c.green("    ✓ ") + `${ide} hooks → ${hooksDest}/`);
+    if (hooksDest) {
+      console.log(c.green("    ✓ ") + `${ide} hooks → ${hooksDest}/`);
+    } else {
+      console.log(c.dim(`    ✓ ${ide} hooks: no files needed (commands point at skills/)`));
+    }
 
     const merged = mergeHooksConfig(target, resolvedRoot, ideAbsRoot);
     if (merged) {

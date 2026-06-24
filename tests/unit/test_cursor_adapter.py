@@ -254,6 +254,73 @@ class TestEnvForwarding(CursorAdapterTestBase):
         self.assertEqual(trace["env_CLAUDE_PROJECT_DIR"], "/some/project")
 
 
+class TestPluginRootResolution(unittest.TestCase):
+    """Adapter must locate PLUGIN_ROOT correctly under both layouts:
+
+      A) Original: <plugin>/hooks/cursor-adapter.py            (PLUGIN_ROOT = <plugin>)
+      B) Namespaced: <plugin>/hooks/trtc-agent-skills/cursor-adapter.py (PLUGIN_ROOT = <plugin>)
+
+    Layout B is what the npx installer now uses so multiple skill packages can
+    co-exist under .cursor/hooks/. If PLUGIN_ROOT lands one level too low under
+    layout B, every DISPATCH path (`skills/.../guardrails/...`) misses and the
+    adapter silently fail-opens — Cursor users would see nothing at all.
+    Anchor that contract here.
+    """
+
+    def _build(self, adapter_rel: Path) -> Path:
+        tmp = Path(tempfile.mkdtemp(prefix="trtc-adapter-loc-")).resolve()
+        adapter = tmp / adapter_rel
+        adapter.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ADAPTER_SRC, adapter)
+        # Plant a stub the adapter will dispatch to. Path is the same regardless
+        # of where the adapter lives — relative to PLUGIN_ROOT, which we expect
+        # to be `tmp` in both layouts.
+        rel_script = DISPATCH["trtc-prepare-ui"]
+        stub = tmp / rel_script
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text(textwrap.dedent(f"""\
+            #!/usr/bin/env python3
+            import os, sys, json
+            with open({json.dumps(str(tmp / 'hook-trace.json'))}, 'w') as f:
+                json.dump({{"env_CLAUDE_PLUGIN_ROOT": os.environ.get("CLAUDE_PLUGIN_ROOT", "")}}, f)
+            sys.exit(0)
+            """))
+        stub.chmod(0o755)
+        return tmp, adapter
+
+    def _run(self, adapter: Path):
+        return subprocess.run(
+            ["python3", str(adapter), "trtc-prepare-ui"],
+            input="",
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
+
+    def test_layout_a_hooks_top_level(self):
+        tmp, adapter = self._build(Path("hooks") / "cursor-adapter.py")
+        try:
+            result = self._run(adapter)
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            trace = json.loads((tmp / "hook-trace.json").read_text())
+            self.assertEqual(trace["env_CLAUDE_PLUGIN_ROOT"], str(tmp))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_layout_b_hooks_namespaced_subdir(self):
+        tmp, adapter = self._build(
+            Path("hooks") / "trtc-agent-skills" / "cursor-adapter.py"
+        )
+        try:
+            result = self._run(adapter)
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            trace = json.loads((tmp / "hook-trace.json").read_text())
+            # The whole point: PLUGIN_ROOT must still be `tmp`, NOT `tmp/hooks`.
+            self.assertEqual(trace["env_CLAUDE_PLUGIN_ROOT"], str(tmp))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestExitCodeMapping(CursorAdapterTestBase):
 
     def test_inner_exit_2_becomes_cursor_deny_envelope_and_exit_2(self):
