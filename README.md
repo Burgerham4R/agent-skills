@@ -20,13 +20,13 @@ If your IDE doesn't have a plugin marketplace, or you'd rather pin the install t
 npx -y @tencent-rtc/trtc-agent-skills@latest add
 
 # Force install for every supported IDE (even ones you don't have)
-npx -y @tencent-rtc/trtc-agent-skills add@latest --ide all
+npx -y @tencent-rtc/trtc-agent-skills@latest add --ide all
 
 # Install only for one specific IDE
-npx -y @tencent-rtc/trtc-agent-skills add@latest --ide cursor
+npx -y @tencent-rtc/trtc-agent-skills@latest add --ide cursor
 
 # Wipe a previous install before re-installing
-npx -y @tencent-rtc/trtc-agent-skills add@latest --clean
+npx -y @tencent-rtc/trtc-agent-skills@latest add --clean
 ```
 
 ---
