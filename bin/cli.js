@@ -121,11 +121,18 @@ const HOOKS_TARGETS = {
   codex: {
     // Codex loads hooks from <repo>/.codex/hooks.json (or ~/.codex/hooks.json)
     // — NOT from .agents/settings.json. See https://developers.openai.com/codex/hooks
+    //
+    // Codex CLI ≥0.135 parses hooks.json with a strict serde schema that rejects
+    // unknown top-level fields ("unknown field `__trtc_agent_skills__`, expected
+    // `hooks`"). We therefore mark codex as `strictSchema: true` so the merge
+    // logic skips the marker injection (uninstall identifies our entries by
+    // hook command path substrings instead — see CODEX_OWNED_COMMAND_HINT).
     settingsFile:    ".codex/hooks.json",
     sourceConfig:    "hooks.json",
     rootPlaceholder: "${CLAUDE_PLUGIN_ROOT}",
     rootRewrite:     ".codex",
     fallbackPlaceholder: "${CODEBUDDY_PLUGIN_ROOT}",
+    strictSchema:    true,
   },
   cursor: {
     // Namespace under .cursor/hooks/trtc-agent-skills/ so we never collide
@@ -140,6 +147,35 @@ const HOOKS_TARGETS = {
     cursorAdapterPlaceholder: "$HOME/.cursor/plugins/local/trtc-agent-skills/hooks/cursor-adapter.py",
   },
 };
+
+// For IDEs whose hook config schema rejects unknown fields (codex), we cannot
+// embed our `__trtc_agent_skills__` ownership markers. Instead, uninstall
+// detects "our" hook entries by checking whether any command string contains
+// one of these path-segment hints — every guardrail script we ship lives under
+// `skills/<skill>/guardrails/`, and the cursor adapter under our namespaced
+// hooks subdir. A user-written hook command is extremely unlikely to match.
+const OWNED_COMMAND_HINTS = [
+  "/skills/trtc/room-builder/guardrails/",
+  "/skills/trtc-topic/guardrails/",
+  "/skills/trtc-apply/guardrails/",
+  "/hooks/trtc-agent-skills/cursor-adapter.py",
+];
+
+function isOwnedHookEntry(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.__trtc_agent_skills__) return true;
+  // Cursor-style: { command: "...", ... }
+  if (typeof entry.command === "string" && OWNED_COMMAND_HINTS.some(h => entry.command.includes(h))) {
+    return true;
+  }
+  // Claude/Codex-style: { matcher?, hooks: [{ command, ... }] }
+  if (Array.isArray(entry.hooks)) {
+    return entry.hooks.some(h => h && typeof h === "object"
+      && typeof h.command === "string"
+      && OWNED_COMMAND_HINTS.some(hint => h.command.includes(hint)));
+  }
+  return false;
+}
 
 // AI instruction files distribution per IDE.
 //   - root-md  : project-root markdown files (CLAUDE.md / AGENTS.md / CODEBUDDY.md).
@@ -367,8 +403,8 @@ function cleanAiInstructions(ideList, resolvedRoot) {
 }
 
 // Strip our hook entries from each IDE's settings file. We tag entries with
-// __trtc_agent_skills__ so we can filter precisely without disturbing the
-// user's own hook entries.
+// __trtc_agent_skills__ where the IDE schema allows (claude/codebuddy/cursor),
+// and fall back to command-path matching for strict-schema IDEs (codex).
 function cleanHooksSettings(ideList, resolvedRoot) {
   for (const ide of ideList) {
     const target = HOOKS_TARGETS[ide];
@@ -390,14 +426,27 @@ function cleanHooksSettings(ideList, resolvedRoot) {
       for (const event of Object.keys(settings.hooks)) {
         const val = settings.hooks[event];
         if (Array.isArray(val)) {
-          settings.hooks[event] = val.filter(e => !(e && typeof e === "object" && e.__trtc_agent_skills__));
+          settings.hooks[event] = val.filter(e => !isOwnedHookEntry(e));
           if (settings.hooks[event].length === 0) delete settings.hooks[event];
+        } else if (val && typeof val === "object" && Array.isArray(val.hooks)) {
+          // Some IDEs nest hooks under a single object per event instead of
+          // an array. Filter the inner hooks list.
+          val.hooks = val.hooks.filter(h => !isOwnedHookEntry(h));
+          if (val.hooks.length === 0) delete settings.hooks[event];
         } else {
-          // Non-array (claude/codebuddy style) — we own the whole event under our install.
-          delete settings.hooks[event];
+          // Unknown shape — leave it alone rather than risk corrupting it.
         }
       }
       if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+    }
+
+    // For strict-schema codex, if we cleared everything, the file we created
+    // serves no purpose and (with `version` etc. potentially also gone) should
+    // be removed so codex doesn't see a stale empty file.
+    const onlyHadOurState = !settings.hooks && Object.keys(settings).length === 0;
+    if (onlyHadOurState) {
+      rmrf(settingsPath);
+      continue;
     }
 
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
@@ -516,8 +565,16 @@ function mergeHooksConfig(target, resolvedRoot, ideAbsRoot) {
   const incomingHooks = parsed.hooks || {};
   if (!existing.hooks || typeof existing.hooks !== "object") existing.hooks = {};
 
+  // For strict-schema IDEs (codex) we MUST NOT embed any ownership marker —
+  // codex CLI ≥0.135 rejects the whole file with
+  //   "unknown field `__trtc_agent_skills__`, expected `hooks`"
+  // and skips all hooks. Identify our entries on uninstall via command-path
+  // hints (see isOwnedHookEntry) instead.
+  const useMarker = !target.strictSchema;
+
   // Marker to identify our entries so a future uninstall can filter precisely.
   const tagged = (entry) => {
+    if (!useMarker) return entry;
     if (entry && typeof entry === "object") {
       return Object.assign({}, entry, { __trtc_agent_skills__: true });
     }
@@ -528,24 +585,32 @@ function mergeHooksConfig(target, resolvedRoot, ideAbsRoot) {
     if (Array.isArray(eventValue)) {
       // Cursor format: hooks.<event> = [{command: ...}, ...]
       const stripped = (existing.hooks[eventName] || [])
-        .filter(e => !(e && typeof e === "object" && e.__trtc_agent_skills__));
+        .filter(e => !isOwnedHookEntry(e));
       existing.hooks[eventName] = stripped.concat(eventValue.map(tagged));
     } else if (Array.isArray(existing.hooks[eventName])) {
       // existing is array (cursor-style), incoming is non-array (claude-style):
       // overwrite — this combination shouldn't happen in practice.
       existing.hooks[eventName] = eventValue;
     } else {
-      // Claude/Codebuddy format: hooks.<event> = [{matcher, hooks: [...]}, ...]
-      // The bundled hooks.json IS the only source for this key; just replace.
+      // Claude/Codebuddy/Codex format: hooks.<event> = [{matcher, hooks:[...]}, ...]
+      // For strict-schema codex, the bundled hooks.json IS the only source for
+      // this key and we own the file; just replace.
       existing.hooks[eventName] = eventValue;
     }
   }
 
   // Top-level marker so a future uninstall can detect our presence quickly.
-  existing.__trtc_agent_skills__ = {
-    version: PKG_VERSION,
-    hookEvents: Object.keys(incomingHooks),
-  };
+  // Skip for strict-schema IDEs (codex) — see useMarker above.
+  if (useMarker) {
+    existing.__trtc_agent_skills__ = {
+      version: PKG_VERSION,
+      hookEvents: Object.keys(incomingHooks),
+    };
+  } else if (existing.__trtc_agent_skills__) {
+    // Defensive: if a previous (buggy) install left this field behind, clean
+    // it up so codex doesn't keep failing schema validation.
+    delete existing.__trtc_agent_skills__;
+  }
 
   // Preserve / propagate top-level keys that the IDE expects (e.g. cursor
   // requires `"version": 1` at the root of .cursor/hooks.json or it rejects
