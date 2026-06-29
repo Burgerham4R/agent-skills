@@ -7,12 +7,14 @@ description: >
   to integrate TRTC, build a video conference, voice room, live stream, 1v1 call,
   or IM chat app, or asks about SDK usage, error codes, pricing, or API docs —
   in any phrasing: "接入TRTC", "如何集成", "build a meeting app", "音视频", "直播间",
-  "IM聊天", "错误码", "怎么用TRTC", "video conference", "RTC SDK". Also triggers
-  for AI customer service / 智能客服 / AI 客服 / voice agent / conversational AI
-  scenarios built on TRTC Conversational AI.
+  "IM聊天", "错误码", "怎么用TRTC", "video conference", "RTC SDK". 
+  Also triggers for Chat (IM) consult and vue3 headless ui integration.
+  Also triggers for AI customer service / 智能客服 / AI 客服 / voice agent /
+  conversational AI scenarios built on TRTC Conversational AI.
   Keywords: TRTC, TUIRoom, RoomKit, Conference, Chat, Call, Live, 视频会议, 音视频,
-  直播, IM, SDK, 集成, 接入, 错误码, AI客服, 智能客服, 对话式AI, voice agent.
-version: 0.1.0
+  直播, IM, TUIKit, UIKit, SDK, 集成, 接入, 错误码, REST API, Webhook, UserSig,
+  AI客服, 智能客服, 对话式AI, voice agent, IM SDK API, IM 内网代理, 计费/套餐.
+version: 0.1.4
 ---
 
 # TRTC Integration Assistant
@@ -22,7 +24,7 @@ version: 0.1.0
 你负责做三件事：
 1. 读取 session，判断是否要恢复已有 flow。
 2. 检测是否为 AI 客服 / Conversational AI 场景，是则路由到 `trtc-ai-service/SKILL.md`。
-3. 用共享工具识别 product / intent，路由到正确 owner：`trtc-conference/SKILL.md` 或 `trtc-docs/SKILL.md`。
+3. 用共享工具识别 product / intent，路由到正确 owner：`trtc-conference/SKILL.md`、`trtc-chat/SKILL.md`、`trtc-chat/docs/SKILL.md` 或 `trtc-docs/SKILL.md`。
 
 ## Hard Boundary
 
@@ -32,12 +34,14 @@ version: 0.1.0
 - 执行任何 `python3 -m tools.*` 命令时，必须从当前 `trtc` skill 根目录执行
   （例如先 `cd "<当前 trtc skill 目录>"`）。不要依赖客户项目根目录存在 `tools/`
   包，也不要让客户项目自己的 `tools` 包抢占解析。
-- 当前唯一支持 guided integration 的产品是 `conference + web`。
-- 其他产品若用户要”接入 / 搭建 / 加功能 / 逐步带我做”，明确告知当前只支持 Conference Web 的引导式集成，并把他们导向文档查询路径。
+- 当前 guided integration 支持 `(conference, web)` 与 `(chat, web)`。
+- 其他产品若用户要”接入 / 搭建 / 加功能 / 逐步带我做”，明确告知当前仅支持 Conference Web / Chat Web 的引导式集成，并把他们导向文档查询路径。
 
 **终止契约**：dispatcher 必须在以下任意一条成立时输出最后一条响应并 STOP，不得继续追问或生成内容：
 - 已路由到 `trtc-ai-service/SKILL.md`
 - 已路由到 `trtc-conference/SKILL.md`
+- 已路由到 `trtc-chat/SKILL.md`
+- 已路由到 `trtc-chat/docs/SKILL.md`
 - 已路由到 `trtc-docs/SKILL.md`
 - 已路由到 `trtc-conference/flows/troubleshoot.md`
 - 已告知用户当前不支持该产品的 guided integration
@@ -92,10 +96,12 @@ python3 "<当前 trtc skill 目录>/tools/reporting.py" context --question "<即
 
 - 若 `status ∈ {active, paused}`：
   - 若 `product = conference`，立即路由到 `../trtc-conference/SKILL.md` 恢复 flow。
-  - 若是其他 product，告知当前只有 Conference Web 支持恢复式 guided integration；若用户是在问事实/错误码/API，再改走 `../trtc-docs/SKILL.md`。
+  - 若 `product = chat` 或 `active_domain_skill = trtc-chat`，立即路由到 `../trtc-chat/SKILL.md` 恢复 flow。
+  - 若是其他 product，告知当前只有 Conference Web / Chat Web 支持恢复式 guided integration；若用户是在问事实/错误码/API，再改走 `../trtc-docs/SKILL.md`。
   - STOP。
 - 若 `status = completed`：
   - 若 `product = conference`，仍路由到 `../trtc-conference/SKILL.md`，由 conference skill 决定是加功能还是重开。
+  - 若 `product = chat`，仍路由到 `../trtc-chat/SKILL.md`，承接 Path B/C/D。
   - 否则按当前消息重新分类。
 - 若 session 不存在 / 损坏 / 过旧：继续下一步。
 
@@ -126,9 +132,9 @@ cd "<当前 trtc skill 目录>" && python3 -m tools.query_classifier --query “
 用结果做路由：
 
 - `kind = error_code` 或 `kind = symptom_like`
-  - 路由到 `../trtc-docs/SKILL.md`
-  - 传 `intent=slice-lookup`
-  - STOP
+  - **记录** `kind`（及 `intent=slice-lookup`，供后续 §A 使用）
+  - **不要** 在此 STOP 或路由到 `trtc-docs` — Chat/IM 语境在 §A 分给 `trtc-chat/docs`；active/paused chat 集成 session 应由 §0 已路由至 `trtc-chat`（domain Path C）
+  - **继续** §2 → Routing §A
 - `kind = capability`
   - 记录 `capability_intent ∈ {integrate, lookup, ambiguous}`
   - 继续下一步
@@ -166,21 +172,42 @@ keyword fallback 也无法匹配时：直接问用户”你在用哪个 TRTC 产
 
 ### A. Lookup / factual questions
 
-以下情况一律路由到 `../trtc-docs/SKILL.md`：
+**信号词单一来源**：Read `../knowledge-base/chat/web/path-d-signals.yaml`（与 `trtc-chat` Step 0 / Path D 共用；禁止在 Root 内联维护第二份列表）。
 
-- capability lookup / “怎么实现 X” / API 用法 / official pattern
-- error code
-- pricing / quota / migration / product comparison
-- symptom / troubleshoot / crash / black screen 的事实排查
+**Chat/IM 语境**（满足任一即可）：
+
+- §2 识别 `product = chat`
+- 用户句命中 `path-d-signals.yaml` 的 `im_consult` 或 `symptom_in_integration`
+- 消息含 §2 Chat keyword 信号（IM、群聊、TUIKit、messaging 等）
+
+**§0 已覆盖（本节不再处理）**：
+
+- `status ∈ {active, paused}` 且 `product = chat` → 已路由 `../trtc-chat/SKILL.md`；集成中报错/白屏/症状走 domain **Path C**，禁止 Root 直送 `trtc-chat/docs` 或 `trtc-docs`
+
+**Path D 冷启动**（无 active/paused chat 集成 session）— 在 `trtc-docs` **之前**：
+
+| 条件 | 路由 |
+|------|------|
+| Chat/IM 语境 + `kind ∈ {error_code, symptom_like}` | `../trtc-chat/docs/SKILL.md`，STOP |
+| Chat/IM 语境 + IM 概念 / REST / Webhook / TUIKit / 计费 / SDK API（`im_consult` 或 factual/decision lookup） | `../trtc-chat/docs/SKILL.md`，STOP |
+| `product = chat` + `capability_intent = lookup` | `../trtc-chat/docs/SKILL.md`，STOP |
 
 **例外：Conference Web symptom（直连，不走 trtc-docs）**
 
 同时满足以下三条时，直接 Read `../trtc-conference/flows/troubleshoot.md`，不经过 `trtc-conference/SKILL.md`：
+
 - `product = conference`（或 session / package.json 含 `@tencentcloud/roomkit-web-vue3` / `tuikit-atomicx-vue3`）
 - `platform = web`（或可推断）
-- intent 为 symptom / troubleshoot / 进不了房 / 黑屏 / 无声音等具体故障
+- `kind = symptom_like` 或 intent 为 symptom / troubleshoot / 进不了房 / 黑屏 / 无声音等具体故障
 
-传入（其他情况走 trtc-docs）：
+**以下情况路由到 `../trtc-docs/SKILL.md`**（非 Chat/IM 语境，或 Conference 例外未命中）：
+
+- capability lookup / “怎么实现 X” / API 用法 / official pattern
+- `kind = error_code` 或 `kind = symptom_like`（**非** Chat/IM 语境）
+- pricing / quota / migration / product comparison
+- symptom / troubleshoot / crash / black screen 的事实排查（**非** Chat/IM、**非** Conference Web 直连例外）
+
+传入 `trtc-docs` 时：
 
 - `product`
 - `platform`（如果能识别）
@@ -223,9 +250,10 @@ keyword fallback 也无法匹配时：直接问用户”你在用哪个 TRTC 产
 确认通过后：
 
 - 若 `(product, platform) == (conference, web)`：路由到 `../trtc-conference/SKILL.md`
+- 若 `(product, platform) == (chat, web)`：路由到 `../trtc-chat/SKILL.md`
 - 否则：
-  - 明确告知当前 guided integration 仅支持 Conference Web
-  - 如果用户只是想了解做法，改走 `../trtc-docs/SKILL.md`
+  - 明确告知当前 guided integration 仅支持 Conference Web 与 Chat Web
+  - 如果用户只是想了解做法，改走 `../trtc-docs/SKILL.md` 或 Chat IM 咨询走 `../trtc-chat/docs/SKILL.md`
   - 不要假装还有旧的 cross-cutting onboarding skill 可以承接其它产品
 
 ### C. Review-worded requests
@@ -234,9 +262,11 @@ keyword fallback 也无法匹配时：直接问用户”你在用哪个 TRTC 产
 
 - 不直接做 code review
 - 先判断底层意图：
-  - 有错误码 / symptom / API pattern / implementation question → `../trtc-docs/SKILL.md`
+  - 有错误码 / symptom / API pattern / implementation question → Chat/IM 语境走 `../trtc-chat/docs/SKILL.md`（§A）；否则 `../trtc-docs/SKILL.md`
   - 集成审计（检查遗漏 / 业务流程是否正常 / 对照官方流程 / 在线课堂流程）→ 读 `../knowledge-base/slices/conference/web/integration-audit.md`，输出 checklist（不做 code review 形态的输出）
+  - Chat 集成审计（active/completed chat + 有 project）→ `../trtc-chat/SKILL.md` + Read `08-state-config.md` §8.2
   - 想让你实际接 Conference Web 代码 → `../trtc-conference/SKILL.md`
+  - 想让你实际接 Chat Web 代码 → `../trtc-chat/SKILL.md`
   - 纯风格 review、没有具体问题 → 明确说明这里不提供 standalone code review，请用户改成具体的错误、API 或集成目标
 
 ## Platform identification
@@ -267,6 +297,8 @@ keyword fallback 也无法匹配时：直接问用户”你在用哪个 TRTC 产
 | Type | Owner | Path |
 |---|---|---|
 | domain skill | Conference guided integration | `../trtc-conference/SKILL.md` |
+| domain skill | Chat guided integration | `../trtc-chat/SKILL.md` |
+| domain skill | Chat IM docs (Path D) | `../trtc-chat/docs/SKILL.md` |
 | domain flow | Conference Web troubleshoot (symptom) | `../trtc-conference/flows/troubleshoot.md` |
 | shared answer layer | factual / docs lookup | `../trtc-docs/SKILL.md` |
 | shared tool | product routing / slice lookup | `python3 -m tools.search` |
@@ -280,5 +312,7 @@ keyword fallback 也无法匹配时：直接问用户”你在用哪个 TRTC 产
 1. Root does not answer integration questions itself; it routes.
 2. Root never routes to removed legacy shared skills; use `trtc-conference`, `trtc-docs`, and shared `python3 -m tools.*` commands only.
 3. Root never exposes internal terms like apply gate / execution_queue / domain skill to end users.
-4. For code-generation intent, only Conference Web may proceed into guided integration.
+4. For code-generation intent, Conference Web and Chat Web may proceed into guided integration.
 5. For all other products, do not fabricate unfinished product flows.
+6. Active chat integration errors/symptoms route via `trtc-chat/SKILL.md` Path C, not `trtc-docs` or `trtc-chat/docs`.
+7. Never Read `trtc-chat/SKILL.md` or `trtc-chat/docs/SKILL.md` as the first skill in a turn — always start from this file (`trtc/SKILL.md`) so §-1 prompt reporting and routing run first. Domain skills are routed owners, not parallel dispatchers.

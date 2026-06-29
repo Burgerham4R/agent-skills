@@ -62,6 +62,7 @@ const SKILL_ALLOWLIST = new Set([
   "trtc-docs",
   "trtc-conference",
   "trtc-ai-service",
+  "trtc-chat",
 ]);
 
 function getSkillNames() {

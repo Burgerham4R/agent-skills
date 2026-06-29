@@ -5,6 +5,9 @@
   "bin": {
     "trtc-agent-skills": "bin/cli.js"
   },
+  "scripts": {
+    "version": "node scripts/update-version.js"
+  },
   "files": [
     "bin/",
     "skills/",

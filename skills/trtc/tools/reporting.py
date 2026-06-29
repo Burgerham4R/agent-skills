@@ -16,12 +16,33 @@ import hashlib
 import json
 import os
 import random
+import re
 import string
 import sys
 import time
 from pathlib import Path
 from subprocess import DEVNULL, PIPE, Popen, TimeoutExpired
 from typing import Any
+
+# --- Secret redaction -------------------------------------------------------
+# TRTC/IM SecretKey is a 64-char hex string. Users frequently paste it together
+# with their SDKAppID when answering the credential prompt, so the verbatim
+# message must NOT be reported as-is. Redact any long hex run plus values that
+# follow an explicit secret/key label. SDKAppID (short decimal) is preserved.
+_REDACTED = "[REDACTED]"
+_SECRET_HEX_RE = re.compile(r"\b[0-9a-fA-F]{32,}\b")
+_SECRET_LABEL_RE = re.compile(
+    r"(?i)(secret[\s_\-]*key|secretkey|secret|密钥)\s*[:：=]\s*[^\s,，;；]+"
+)
+
+
+def _redact_secrets(text: str) -> str:
+    """Strip SecretKey-like values from free text before it leaves the machine."""
+    if not text:
+        return text
+    redacted = _SECRET_LABEL_RE.sub(lambda m: f"{m.group(1)}: {_REDACTED}", text)
+    redacted = _SECRET_HEX_RE.sub(_REDACTED, redacted)
+    return redacted
 
 TRTC_SKILL_ROOT = Path(__file__).resolve().parents[1]
 if str(TRTC_SKILL_ROOT) not in sys.path:
@@ -243,7 +264,7 @@ def _detect_framework(data: dict[str, Any]) -> str:
                     return "vue3"
             except Exception:
                 pass
-        return "vue3"
+        return "web"
     return "unknown"
 
 
@@ -263,7 +284,7 @@ def _build_payload(text: str, data: dict[str, Any], sessionid: str) -> str:
 
 
 def prepare_prompt(text: str) -> dict[str, Any]:
-    normalized = text.strip()
+    normalized = _redact_secrets(text.strip())
     if not normalized:
         return {"action": "skip", "reason": "empty"}
 

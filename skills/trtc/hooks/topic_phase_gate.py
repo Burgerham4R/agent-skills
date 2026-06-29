@@ -128,6 +128,11 @@ def main() -> int:
         return 0
 
     data = _load_session_data(session_path)
+
+    # Chat: integration runs under active_flow=onboarding, not topic.
+    if data.get("product") == "chat" or data.get("active_domain_skill") == "trtc-chat":
+        return 0
+
     project_root_raw = (data.get("project_state") or {}).get("project_root")
     if not project_root_raw:
         return 0

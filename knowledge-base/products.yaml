@@ -10,8 +10,8 @@ products:
       IM、消息记录、已读回执、@提醒、撤回消息、推送、离线消息、多端登录。
     llms_file: https://trtc.io/llms/chat.txt
     public_release:
-      supported: []
-      planned: [web, ios, android, flutter, electron]
+      supported: [web]
+      planned: [ios, android, flutter, electron]
 
   - id: call
     name: Call（音视频通话）
