@@ -488,7 +488,14 @@ function copyKnowledgeBase(skillsRootAbs) {
 // to the plugin install root. In npx mode there's no plugin root, so we
 // materialize those placeholders to absolute paths pointing at the IDE's
 // settings dir (where we put .{ide}/skills/, .{ide}/hooks/, etc).
-function rewriteHooksContent(content, target, ideAbsRoot) {
+//
+// `hooksDestAbs` is the absolute path the hooks/ source dir was actually
+// copied to (e.g. <root>/.cursor/hooks/trtc-agent-skills for cursor, or
+// <root>/.claude/hooks for claude). We use it to resolve cursor-adapter.py
+// rather than reconstructing it from `ideAbsRoot + "hooks"`, because cursor
+// nests its hooks one level deeper (under trtc-agent-skills/) for namespace
+// isolation — see HOOKS_TARGETS.cursor.hooksDir.
+function rewriteHooksContent(content, target, ideAbsRoot, hooksDestAbs) {
   let out = content;
   if (target.rootPlaceholder) {
     // Replace BOTH ${CLAUDE_PLUGIN_ROOT} and ${CODEBUDDY_PLUGIN_ROOT} — the
@@ -512,7 +519,12 @@ function rewriteHooksContent(content, target, ideAbsRoot) {
     // We need the resulting JSON string to evaluate to a shell-quoted path so
     // project paths with spaces don't break shell parsing — that means
     // emitting `\"<abs>\"` (JSON-escaped quotes) into the string.
-    const cursorAdapterAbs = path.join(ideAbsRoot, "hooks", "cursor-adapter.py");
+    //
+    // Use hooksDestAbs (the actual copy destination) — NOT ideAbsRoot+"hooks"
+    // — because cursor's hooksDir is namespaced as
+    // .cursor/hooks/trtc-agent-skills, so the script lives one level deeper
+    // than the .cursor/hooks/ that ideAbsRoot+"hooks" would point at.
+    const cursorAdapterAbs = path.join(hooksDestAbs, "cursor-adapter.py");
     const replacement = `\\"${cursorAdapterAbs}\\"`;
     out = out.split(target.cursorAdapterPlaceholder).join(replacement);
   }
@@ -535,12 +547,12 @@ function copyHooksDir(target, resolvedRoot) {
 // ~/.cursor/hooks.json we merge per-event arrays so a previously-installed
 // project's adapter path gets replaced by ours but the user's own hook
 // entries (if any) are preserved.
-function mergeHooksConfig(target, resolvedRoot, ideAbsRoot) {
+function mergeHooksConfig(target, resolvedRoot, ideAbsRoot, hooksDestAbs) {
   const srcPath = path.join(HOOKS_SRC, target.sourceConfig);
   if (!fs.existsSync(srcPath)) return null;
 
   const rawSrc = fs.readFileSync(srcPath, "utf8");
-  const rewritten = rewriteHooksContent(rawSrc, target, ideAbsRoot);
+  const rewritten = rewriteHooksContent(rawSrc, target, ideAbsRoot, hooksDestAbs);
   let parsed;
   try { parsed = JSON.parse(rewritten); }
   catch (err) {
@@ -636,7 +648,7 @@ function installHooks(ideList, resolvedRoot) {
     const hooksDest = copyHooksDir(target, resolvedRoot);
     console.log(c.green("    ✓ ") + `${ide} hooks → ${hooksDest}/`);
 
-    const merged = mergeHooksConfig(target, resolvedRoot, ideAbsRoot);
+    const merged = mergeHooksConfig(target, resolvedRoot, ideAbsRoot, hooksDest);
     if (merged) {
       const isUserLevel = path.isAbsolute(target.settingsFile);
       const prefix = isUserLevel ? c.yellow("    ⚠ ") : c.green("    ✓ ");
