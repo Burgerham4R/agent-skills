@@ -1,8 +1,12 @@
 # TRTC AI 客服 Skill
 
-[English](README.md) | [中文](README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md) | [日本語](README.ja.md)
 
 > 零代码 AI 客服搭建器。只需在聊天窗口中说一句话，AI 会一步步引导你完成客服系统的搭建——无需终端、无需脚本、无需编程。
+
+## 演示
+
+https://github.com/user-attachments/assets/b303bbca-d82b-4d57-8722-4b56d26af9b8
 
 ## 这是什么？
 
@@ -46,13 +50,13 @@ AI（自动完成所有操作）：
 
 **用户级安装**（推荐 — 所有项目均可使用）：
 ```bash
-/skills install https://github.com/Burgerham4R/ai-customer-service-skill
+/skills install https://github.com/Tencent-RTC/agent-skills
 ```
 
 **项目级安装**（仅当前项目可用）：
 ```bash
 # Skill 将安装到 ./.codex/skills/（访达中按 Cmd+Shift+. 可显示隐藏文件夹）
-/skills install --project https://github.com/Burgerham4R/ai-customer-service-skill
+/skills install --project https://github.com/Tencent-RTC/agent-skills
 ```
 
 #### Claude Code CLI
@@ -60,22 +64,22 @@ AI（自动完成所有操作）：
 **用户级安装**（推荐 — 所有项目均可使用）：
 ```bash
 mkdir -p ~/.claude/skills
-git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ~/.claude/skills/ai-customer-service-skill
+git clone https://github.com/Tencent-RTC/agent-skills.git ~/.claude/skills/agent-skills
 ```
 
 **项目级安装**（仅当前项目可用）：
 ```bash
 mkdir -p ./.claude/skills
-git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ./.claude/skills/ai-customer-service-skill
+git clone https://github.com/Tencent-RTC/agent-skills.git ./.claude/skills/agent-skills
 ```
 
 #### 其他 Agent（CodeBuddy / Cursor 等）
 
 克隆到任意位置，然后让 Agent 加载 `SKILL.md`：
 ```bash
-git clone https://github.com/Burgerham4R/ai-customer-service-skill.git
+git clone https://github.com/Tencent-RTC/agent-skills.git
 # 然后对你的 Agent 说：
-# "从 /path/to/ai-service-skill/SKILL.md 加载这个 Skill"
+# "从 /path/to/agent-skills/skills/trtc-ai-service/SKILL.md 加载这个 Skill"
 ```
 
 > **安装完成后，请重启 CLI 会话** 以确保 Skill 被正确注册和加载。
