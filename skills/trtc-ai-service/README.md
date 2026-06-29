@@ -1,8 +1,12 @@
 # TRTC AI Customer Service Skill
 
-[English](README.md) | [中文](README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md) | [日本語](README.ja.md)
 
 > A zero-code AI customer service builder. Just say a sentence in the chat window and the AI will guide you step by step to get your customer service system up and running — no terminal, no scripts, no coding required.
+
+## Demo
+
+https://github.com/user-attachments/assets/b303bbca-d82b-4d57-8722-4b56d26af9b8
 
 ## What is this?
 
@@ -46,13 +50,13 @@ You never open a terminal or run a script manually.
 
 **User-level** (recommended — available across all projects):
 ```bash
-/skills install https://github.com/Burgerham4R/ai-customer-service-skill
+/skills install https://github.com/Tencent-RTC/agent-skills
 ```
 
 **Project-level** (only available in the current project):
 ```bash
 # The skill will be installed to ./.codex/skills/ (Cmd+Shift+. to show hidden folders in Finder)
-/skills install --project https://github.com/Burgerham4R/ai-customer-service-skill
+/skills install --project https://github.com/Tencent-RTC/agent-skills
 ```
 
 #### Claude Code CLI
@@ -60,22 +64,22 @@ You never open a terminal or run a script manually.
 **User-level** (recommended — available across all projects):
 ```bash
 mkdir -p ~/.claude/skills
-git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ~/.claude/skills/ai-customer-service-skill
+git clone https://github.com/Tencent-RTC/agent-skills.git ~/.claude/skills/agent-skills
 ```
 
 **Project-level** (only available in the current project):
 ```bash
 mkdir -p ./.claude/skills
-git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ./.claude/skills/ai-customer-service-skill
+git clone https://github.com/Tencent-RTC/agent-skills.git ./.claude/skills/agent-skills
 ```
 
 #### Other agents (CodeBuddy / Cursor / etc.)
 
 Clone to any location and point your agent to `SKILL.md`:
 ```bash
-git clone https://github.com/Burgerham4R/ai-customer-service-skill.git
+git clone https://github.com/Tencent-RTC/agent-skills.git
 # Then tell your agent:
-# "Load the Skill from /path/to/ai-service-skill/SKILL.md"
+# "Load the Skill from /path/to/agent-skills/skills/trtc-ai-service/SKILL.md"
 ```
 
 > **After installation, restart your CLI session** to ensure the Skill is properly registered and loaded.
@@ -94,8 +98,8 @@ To get the customer service agent running, you need 3 cloud service credentials.
 
 | Key | Purpose | Where to find it |
 |-----|---------|-----------------|
-| Key 1: Tencent Cloud API Key | Proves you have permission to use Tencent Cloud voice & calling services | https://console.tencentcloud.com/cam/capi |
-| Key 2: TRTC Application Credentials | Lets the agent make calls and do voice chat | https://console.trtc.io/app |
+| Key 1: TRTC Application Credentials | Lets the agent make calls and do voice chat | https://console.trtc.io/ (register & create a Conversational AI app) |
+| Key 2: Tencent Cloud API Key | Proves you have permission to use Tencent Cloud voice & calling services (login syncs with your TRTC account) | https://console.tencentcloud.com/cam/capi |
 | Key 3: LLM API Key | Lets the agent "think" — understand queries and respond | Your registered AI service website (e.g. OpenAI, DeepSeek, etc.) |
 
 > The AI will tell you exactly how to get each key step by step. Your key info is only used for this configuration session — the system does not log or leak it.

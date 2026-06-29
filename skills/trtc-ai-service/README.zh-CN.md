@@ -1,8 +1,12 @@
 # TRTC AI 客服 Skill
 
-[English](README.md) | [中文](README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md) | [日本語](README.ja.md)
 
 > 零代码 AI 客服搭建器。只需在聊天窗口中说一句话，AI 会一步步引导你完成客服系统的搭建——无需终端、无需脚本、无需编程。
+
+## 演示
+
+https://github.com/user-attachments/assets/b303bbca-d82b-4d57-8722-4b56d26af9b8
 
 ## 这是什么？
 
@@ -46,13 +50,13 @@ AI（自动完成所有操作）：
 
 **用户级安装**（推荐 — 所有项目均可使用）：
 ```bash
-/skills install https://github.com/Burgerham4R/ai-customer-service-skill
+/skills install https://github.com/Tencent-RTC/agent-skills
 ```
 
 **项目级安装**（仅当前项目可用）：
 ```bash
 # Skill 将安装到 ./.codex/skills/（访达中按 Cmd+Shift+. 可显示隐藏文件夹）
-/skills install --project https://github.com/Burgerham4R/ai-customer-service-skill
+/skills install --project https://github.com/Tencent-RTC/agent-skills
 ```
 
 #### Claude Code CLI
@@ -60,22 +64,22 @@ AI（自动完成所有操作）：
 **用户级安装**（推荐 — 所有项目均可使用）：
 ```bash
 mkdir -p ~/.claude/skills
-git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ~/.claude/skills/ai-customer-service-skill
+git clone https://github.com/Tencent-RTC/agent-skills.git ~/.claude/skills/agent-skills
 ```
 
 **项目级安装**（仅当前项目可用）：
 ```bash
 mkdir -p ./.claude/skills
-git clone https://github.com/Burgerham4R/ai-customer-service-skill.git ./.claude/skills/ai-customer-service-skill
+git clone https://github.com/Tencent-RTC/agent-skills.git ./.claude/skills/agent-skills
 ```
 
 #### 其他 Agent（CodeBuddy / Cursor 等）
 
 克隆到任意位置，然后让 Agent 加载 `SKILL.md`：
 ```bash
-git clone https://github.com/Burgerham4R/ai-customer-service-skill.git
+git clone https://github.com/Tencent-RTC/agent-skills.git
 # 然后对你的 Agent 说：
-# "从 /path/to/ai-service-skill/SKILL.md 加载这个 Skill"
+# "从 /path/to/agent-skills/skills/trtc-ai-service/SKILL.md 加载这个 Skill"
 ```
 
 > **安装完成后，请重启 CLI 会话** 以确保 Skill 被正确注册和加载。
@@ -92,8 +96,8 @@ git clone https://github.com/Burgerham4R/ai-customer-service-skill.git
 
 | 密钥 | 用途 | 获取地址 |
 |------|------|---------|
-| 密钥 1：Tencent Cloud API Key | 证明你有权限使用 TRTC 语音和通话服务 | https://console.tencentcloud.com/cam/capi |
-| 密钥 2：TRTC 应用凭证 | 让智能体能够拨打电话和进行语音聊天 | https://console.trtc.io/app |
+| 密钥 1：TRTC 应用凭证 | 让智能体能够拨打电话和进行语音聊天 | https://console.trtc.io/（注册并创建 Conversational AI 应用） |
+| 密钥 2：Tencent Cloud API Key | 证明你有权限使用 TRTC 语音和通话服务（登录态与 TRTC 账号自动同步） | https://console.tencentcloud.com/cam/capi |
 | 密钥 3：LLM API Key | 让智能体能够"思考"——理解用户问题并回复 | 你注册的 AI 服务网站（如 OpenAI、DeepSeek 等） |
 
 > AI 会一步步详细告诉你如何获取每个密钥。你的密钥信息仅用于本次配置会话——系统不会记录或泄露。
