@@ -10,7 +10,62 @@
 
 ---
 
-### 安装
+## 关于 Tencent RTC
+
+[Tencent RTC](https://trtc.io)（实时音视频）为全球数千家企业提供实时音频、视频和对话式 AI 体验。依托覆盖 200+ 国家和地区的全球边缘网络，TRTC 提供低于 300ms 的超低延迟大规模实时通信能力。
+
+---
+
+## 安装
+
+**Claude Code**
+
+```bash
+# 第一步 — 添加 TRTC 插件市场
+/plugin marketplace add Tencent-RTC/agent-skills
+
+# 第二步 — 安装插件
+/plugin install trtc-agent-skills@trtc-marketplace
+
+# 第三步 — 无需重启，直接激活
+/reload-plugins
+```
+
+**Cursor**
+
+克隆仓库并安装到 Cursor 本地插件目录：
+
+```bash
+git clone https://github.com/Tencent-RTC/agent-skills.git ~/.cursor/plugins/local/trtc-agent-skills
+```
+
+然后按 **`Cmd+Shift+P`**（Mac）/ **`Ctrl+Shift+P`**（Windows/Linux）→ 输入 `Reload Window` 回车（或直接重启 Cursor）。
+
+**Codex CLI**
+
+```bash
+# 第一步 — 添加 TRTC 插件市场
+codex plugin marketplace add Tencent-RTC/agent-skills
+
+# 第二步 — 在 Codex CLI 中打开插件浏览器：
+/plugins
+# 选择 "TRTC Agent Skills" 标签页 → 选择 trtc-agent-skills → 按 Enter 安装
+```
+
+**CodeBuddy CLI**
+
+```bash
+# 第一步 — 添加 TRTC 插件市场
+/plugin marketplace add Tencent-RTC/agent-skills
+
+# 第二步 — 安装插件
+/plugin install trtc-agent-skills@trtc-marketplace
+
+# 第三步 — 无需重启，直接激活
+/reload-plugins
+```
+
+### 通过 npx 安装（任意 IDE，无需插件市场）
 
 如果你所在的 IDE 没有插件市场，或者你希望把安装范围限定在某个具体项目里，可以用 npx 安装器。在项目根目录执行：
 
@@ -28,6 +83,21 @@ npx -y @tencent-rtc/trtc-agent-skills@latest add --ide cursor
 # 重装前先清理旧的安装
 npx -y @tencent-rtc/trtc-agent-skills@latest add --clean
 ```
+
+## 配置 MCP
+
+本 Skill 只调用 **一个** 可选的 MCP Server：`tencent-rtc-skill-tool`（包
+[`@tencent-rtc/skill-tool`](https://www.npmjs.com/package/@tencent-rtc/skill-tool)），
+仅用于轻量的、即发即忘的使用情况上报。没有它 Skill 也能完整工作——未配置时自动跳过上报。
+
+本 Skill **不会** 从任何 MCP 读取你的 TRTC 凭证，也 **不会** 替你生成 `userSig`。
+你在被询问时提供 **SDKAppID**，并自行到 TRTC 控制台获取 **测试 UserSig**：
+
+> 在[控制台（国际站）](https://console.trtc.io) / [控制台（中国站）](https://console.cloud.tencent.com)
+> 的应用详情页获取 `YOUR_SDKAPPID`，并通过「快速跑通 / UserSig 生成&校验」生成测试 UserSig。
+> 控制台签发的 UserSig 仅用于开发联调且会过期；生产环境必须由你自己的后端签发，SecretKey 务必只保留在服务端。
+
+通过 `npx` 安装时，`tencent-rtc-skill-tool` 工具服务会自动注册到对应 IDE 的 MCP 配置，无需手动配置；如果是通过 IDE 插件市场安装，则需按各 IDE 的文档手动配置 MCP（具体 server entry 见 `bin/cli.js`）。
 
 ---
 
@@ -91,3 +161,9 @@ Skill 的知识分两层：
 - [控制台（中国站）](https://console.cloud.tencent.com)
 - [下载 SDK](https://trtc.io/download)
 - [提交问题](https://github.com/Tencent-RTC/agent-skills/issues)
+
+---
+
+## 联系我们
+
+如需技术支持或企业定制优惠，可访问 [trtc.io/contact](https://trtc.io/contact) 提交联系方式，我们的团队将尽快与您联系。

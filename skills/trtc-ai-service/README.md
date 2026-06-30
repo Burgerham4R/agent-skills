@@ -6,7 +6,13 @@
 
 ## Demo
 
-https://github.com/user-attachments/assets/b303bbca-d82b-4d57-8722-4b56d26af9b8
+https://github.com/user-attachments/assets/a2e076ce-38c9-4bd8-a40a-e4e09d4ce360
+
+## About Tencent RTC
+
+[Tencent RTC](https://trtc.io) (Real-Time Communication) powers real-time audio, video, and conversational AI experiences for thousands of businesses worldwide. With a global edge network spanning 200+ countries and regions, TRTC delivers sub-300ms ultra-low latency at scale.
+
+The **Conversational AI** capability enables developers to build voice agents that can listen, understand, and respond naturally — perfect for customer service, sales assistance, and intelligent self-service scenarios.
 
 ## What is this?
 
@@ -94,11 +100,11 @@ git clone https://github.com/Tencent-RTC/agent-skills.git
 
 To get the customer service agent running, you need 3 cloud service credentials. Don't worry — they're just 3 strings you copy-paste from the corresponding websites.
 
-> **Tencent RTC (trtc.io)** is Tencent Cloud's international Real-Time Communication brand. The TRTC Conversational AI service runs on Tencent Cloud infrastructure — your TRTC account and Tencent Cloud account are linked through a unified login system. When you get your API Key, the system will automatically sync your login session.
+> **How are TRTC and Tencent Cloud connected?** The TRTC Conversational AI service runs on Tencent Cloud. In simple terms: TRTC handles the voice calls between your customers and the AI agent, while Tencent Cloud handles the backend (permissions, service setup, billing, etc.). The two share the same login — register once and you're all set.
 
 | Key | Purpose | Where to find it |
 |-----|---------|-----------------|
-| Key 1: TRTC Application Credentials | Lets the agent make calls and do voice chat | https://console.trtc.io/ (register & create a Conversational AI app) |
+| Key 1: TRTC Application Credentials | Lets the agent make calls and do voice chat | https://console.trtc.io/ (register & create an **RTC Engine** app — supports Conversational AI) |
 | Key 2: Tencent Cloud API Key | Proves you have permission to use Tencent Cloud voice & calling services (login syncs with your TRTC account) | https://console.tencentcloud.com/cam/capi |
 | Key 3: LLM API Key | Lets the agent "think" — understand queries and respond | Your registered AI service website (e.g. OpenAI, DeepSeek, etc.) |
 
@@ -197,3 +203,7 @@ ai-service-skill/
 ---
 
 > **One last thing**: This Skill is designed so that anyone — even with zero coding experience — can get an AI customer service agent up and running. If you run into any issues along the way, just tell the AI in the chat window and it'll help you resolve them.
+
+## Contact Us
+
+Need technical support or enterprise pricing? Submit your contact information at [trtc.io/contact](https://trtc.io/contact) and our team will get back to you shortly.
